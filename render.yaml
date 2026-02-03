@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: sales-dojo
+    runtime: docker
+    plan: free
+    healthCheckPath: /_stcore/health
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
