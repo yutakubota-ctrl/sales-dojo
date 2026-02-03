@@ -1,0 +1,11 @@
+# Environment
+.env
+__pycache__/
+*.pyc
+
+# Streamlit secrets (keep config.toml)
+.streamlit/secrets.toml
+
+# IDE
+.vscode/
+.idea/
