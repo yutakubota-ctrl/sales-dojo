@@ -2,3 +2,6 @@ streamlit>=1.28.0
 pandas>=2.0.0
 anthropic>=0.18.0
 python-dotenv>=1.0.0
+audio-recorder-streamlit>=0.0.8
+SpeechRecognition>=3.10.0
+pydub>=0.25.1

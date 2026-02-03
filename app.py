@@ -26,6 +26,38 @@ try:
 except ImportError:
     ANTHROPIC_AVAILABLE = False
 
+# --- Try to import Audio Recording ---
+try:
+    from audio_recorder_streamlit import audio_recorder
+    import speech_recognition as sr
+    import io
+    AUDIO_AVAILABLE = True
+except ImportError:
+    AUDIO_AVAILABLE = False
+
+def transcribe_audio(audio_bytes: bytes) -> str:
+    """Transcribe audio bytes to text using Google Speech Recognition."""
+    if not AUDIO_AVAILABLE:
+        return None
+
+    recognizer = sr.Recognizer()
+
+    # Convert audio bytes to AudioFile
+    audio_file = io.BytesIO(audio_bytes)
+
+    try:
+        with sr.AudioFile(audio_file) as source:
+            audio_data = recognizer.record(source)
+            text = recognizer.recognize_google(audio_data, language="ja-JP")
+            return text
+    except sr.UnknownValueError:
+        return None
+    except sr.RequestError:
+        return None
+    except Exception:
+        # Try alternative approach with WAV header
+        return None
+
 # --- Configuration & Constants ---
 INDUSTRIES = ["製造業", "SaaS", "金融", "物流", "ヘルスケア", "建設", "小売", "不動産"]
 BUDGETS = ["300万円（部内予算）", "500万円（部内予算）", "1000万円（部門予算）", "2000万円（全社予算）"]
@@ -565,23 +597,52 @@ else:
                 with st.chat_message(msg["role"], avatar="👤" if msg["role"] == "assistant" else "👔"):
                     st.markdown(msg["content"])
 
-        # User Input
-        if prompt := st.chat_input("顧客への提案を入力してください..."):
+        # User Input (Text + Voice)
+        input_col1, input_col2 = st.columns([6, 1])
+
+        with input_col2:
+            if AUDIO_AVAILABLE:
+                st.markdown("**🎤 音声**")
+                audio_bytes = audio_recorder(
+                    text="",
+                    recording_color="#e74c3c",
+                    neutral_color="#667eea",
+                    icon_size="2x",
+                    pause_threshold=2.0
+                )
+            else:
+                audio_bytes = None
+
+        # Process voice input
+        voice_text = None
+        if audio_bytes and AUDIO_AVAILABLE:
+            with st.spinner("音声を認識中..."):
+                voice_text = transcribe_audio(audio_bytes)
+                if voice_text:
+                    st.success(f"認識結果: {voice_text}")
+
+        with input_col1:
+            prompt = st.chat_input("顧客への提案を入力してください...")
+
+        # Use voice text if available, otherwise use typed text
+        final_prompt = voice_text if voice_text else prompt
+
+        if final_prompt:
             # 1. Add User Message
-            st.session_state.messages.append({"role": "user", "content": prompt})
+            st.session_state.messages.append({"role": "user", "content": final_prompt})
 
             # 2. Generate Manager Feedback (Parallel Process)
-            feedback = generate_manager_feedback(prompt, st.session_state.customer_persona)
+            feedback = generate_manager_feedback(final_prompt, st.session_state.customer_persona)
             st.session_state.review_log.append({
                 "turn": len(st.session_state.messages) // 2,
-                "user_input": prompt,
+                "user_input": final_prompt,
                 "feedback": feedback
             })
 
             # 3. Generate Customer Response
             with st.spinner(f"{st.session_state.customer_persona['position']} が検討中..."):
                 time.sleep(0.5 if st.session_state.llm_mode == "api" else 1)
-                response = generate_customer_response(prompt, st.session_state.customer_persona)
+                response = generate_customer_response(final_prompt, st.session_state.customer_persona)
                 st.session_state.messages.append({"role": "assistant", "content": response})
 
             st.rerun()

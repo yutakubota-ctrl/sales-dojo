@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(timeout:*)",
+      "Bash(gh auth:*)",
+      "Bash(huggingface-cli whoami:*)",
+      "Bash(python -m huggingface_hub.commands.huggingface_cli:*)",
+      "Bash(start \"https://render.com/deploy?repo=https://github.com/yutakubota-ctrl/sales-dojo\")"
+    ]
+  }
+}
