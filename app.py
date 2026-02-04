@@ -315,9 +315,9 @@ def generate_manager_feedback(user_input: str, customer_context: Dict) -> Dict:
         except (json.JSONDecodeError, KeyError):
             pass
 
-    # Mock keyword-based logic
+    # === Enhanced Mock Evaluation Logic ===
     feedback_points = []
-    score = 0
+    penalties = []
     breakdown = {
         "micro_agent": 0,
         "state_management": 0,
@@ -325,52 +325,146 @@ def generate_manager_feedback(user_input: str, customer_context: Dict) -> Dict:
         "human_in_loop": 0
     }
 
+    # --- NEGATIVE PATTERNS (Dangerous proposals) ---
+    danger_patterns = [
+        ("全部自動", "『全部自動化』は危険な提案です。例外処理やエラー時の対応が考慮されていません。"),
+        ("全自動", "『全自動』という表現は顧客に不信感を与えます。人間の介入ポイントを明示してください。"),
+        ("工数ゼロ", "『工数ゼロ』は非現実的です。適切な期待値設定が必要です。"),
+        ("何でもできる", "『何でもできる』は思考停止した提案です。具体的な役割分担を示してください。"),
+        ("魔法", "『魔法のように』という表現は避けてください。技術的な根拠を示しましょう。"),
+        ("簡単に導入", "導入の容易さだけでなく、運用フェーズの設計も説明してください。"),
+    ]
+
+    penalty_score = 0
+    for pattern, warning in danger_patterns:
+        if pattern in user_input:
+            penalties.append(f"🚨 {warning}")
+            penalty_score += 15
+
+    # --- POSITIVE PATTERNS with Context ---
+
     # Micro-Agent Strategy (30 points)
-    micro_keywords = ["エージェント", "Gem", "マイクロ", "単一責任", "専門特化", "分離", "独立"]
-    for kw in micro_keywords:
-        if kw in user_input:
-            breakdown["micro_agent"] = min(breakdown["micro_agent"] + 10, 30)
-            feedback_points.append(f"✅ 「{kw}」への言及あり - Micro-Agent戦略")
+    micro_score = 0
+    # High value: Specific role definition
+    if any(x in user_input for x in ["解析Gem", "作成Gem", "通知Gem", "判定Gem", "リマインドGem"]):
+        micro_score += 20
+        feedback_points.append("✅ 具体的なGemの役割定義あり - Micro-Agent戦略の理想形")
+    elif "役割" in user_input and any(x in user_input for x in ["分け", "分割", "細分化", "分離"]):
+        micro_score += 15
+        feedback_points.append("✅ 役割分割の概念を説明 - Micro-Agent戦略")
+    elif any(x in user_input for x in ["単一責任", "専門特化", "それぞれの"]):
+        micro_score += 12
+        feedback_points.append("✅ 単一責任の原則への言及あり")
+    elif any(x in user_input for x in ["Gem", "エージェント"]) and "連携" in user_input:
+        micro_score += 10
+        feedback_points.append("✅ エージェント連携の概念あり")
+    elif any(x in user_input for x in ["Gem", "エージェント"]):
+        micro_score += 5
+        feedback_points.append("⚠️ Gem/エージェントの言及はあるが、具体的な役割定義が不足")
+
+    breakdown["micro_agent"] = min(micro_score, 30)
 
     # State Management (25 points)
-    state_keywords = ["エラー", "リルート", "例外", "状態", "ステート", "フォールバック", "再試行"]
-    for kw in state_keywords:
-        if kw in user_input:
-            breakdown["state_management"] = min(breakdown["state_management"] + 8, 25)
-            feedback_points.append(f"✅ 「{kw}」への言及あり - 動的ステート管理")
+    state_score = 0
+    if any(x in user_input for x in ["リルート", "フォールバック", "代替ルート"]):
+        state_score += 15
+        feedback_points.append("✅ エラー時のリルート設計あり - 動的ステート管理")
+    if any(x in user_input for x in ["例外", "エラー"]) and any(x in user_input for x in ["処理", "対応", "時"]):
+        state_score += 10
+        feedback_points.append("✅ 例外処理への言及あり")
+    if any(x in user_input for x in ["3日", "期限", "タイムアウト", "返信がない"]):
+        state_score += 8
+        feedback_points.append("✅ 時間ベースのトリガー設計あり")
+
+    breakdown["state_management"] = min(state_score, 25)
 
     # Organic Looping (25 points)
-    loop_keywords = ["循環", "ループ", "連携", "フィードバック", "協調", "有機的"]
-    for kw in loop_keywords:
-        if kw in user_input:
-            breakdown["organic_looping"] = min(breakdown["organic_looping"] + 8, 25)
-            feedback_points.append(f"✅ 「{kw}」への言及あり - 有機的循環")
+    loop_score = 0
+    if "循環" in user_input and any(x in user_input for x in ["構造", "設計", "組み"]):
+        loop_score += 20
+        feedback_points.append("✅ 循環構造の設計を明示 - 有機的循環の理想形")
+    elif any(x in user_input for x in ["ループ", "繰り返し", "定期的"]):
+        loop_score += 12
+        feedback_points.append("✅ ループ処理の概念あり")
+    if "連携" in user_input and any(x in user_input for x in ["次に", "その後", "まず"]):
+        loop_score += 8
+        feedback_points.append("✅ 処理フローの順序を説明")
+    if any(x in user_input for x in ["取りこぼし", "漏れ", "フォローアップ"]):
+        loop_score += 5
+        feedback_points.append("✅ 取りこぼし防止の意識あり")
+
+    breakdown["organic_looping"] = min(loop_score, 25)
 
     # Human-in-the-Loop (20 points)
-    human_keywords = ["人間", "承認", "確認", "レビュー", "介入", "ゲートキーパー", "最終判断"]
-    for kw in human_keywords:
-        if kw in user_input:
-            breakdown["human_in_loop"] = min(breakdown["human_in_loop"] + 7, 20)
-            feedback_points.append(f"✅ 「{kw}」への言及あり - Human-in-the-Loop")
+    human_score = 0
+    if ("人間" in user_input or "担当者" in user_input) and any(x in user_input for x in ["承認", "確認", "判断"]):
+        human_score += 15
+        feedback_points.append("✅ 人間による承認フローを明示 - Human-in-the-Loop")
+    elif "Human-in-the-Loop" in user_input or "ヒューマンインザループ" in user_input:
+        human_score += 12
+        feedback_points.append("✅ Human-in-the-Loop概念への直接言及")
+    elif any(x in user_input for x in ["承認ボタン", "最終確認", "ゲートキーパー"]):
+        human_score += 15
+        feedback_points.append("✅ 具体的な承認UIの言及あり")
+    elif any(x in user_input for x in ["承認", "確認", "レビュー"]):
+        human_score += 8
+        feedback_points.append("✅ 確認プロセスへの言及あり")
 
-    score = sum(breakdown.values())
+    breakdown["human_in_loop"] = min(human_score, 20)
 
-    # Additional feedback
+    # --- BONUS: Security & ROI ---
+    bonus_score = 0
+    if any(x in user_input for x in ["匿名化", "マスキング", "個人情報"]):
+        bonus_score += 5
+        feedback_points.append("🛡️ セキュリティ対策（匿名化）への言及 - 信頼性向上")
+    if any(x in user_input for x in ["学習に使われない", "学習除外", "データ保護"]):
+        bonus_score += 5
+        feedback_points.append("🛡️ データ学習除外への言及 - 顧客の懸念に対応")
+    if any(x in user_input for x in ["スモールスタート", "PoC", "実証", "パイロット"]):
+        bonus_score += 5
+        feedback_points.append("📊 スモールスタート戦略の提案 - 現実的なアプローチ")
+    if any(x in user_input for x in ["削減", "%", "工数", "コスト"]) and any(x in user_input for x in ["30", "50", "効果"]):
+        bonus_score += 5
+        feedback_points.append("📊 具体的なROI/効果の提示")
+    if any(x in user_input for x in ["ロードマップ", "来期", "拡張", "段階的"]):
+        bonus_score += 5
+        feedback_points.append("📊 将来展望の提示 - 長期的なパートナーシップ")
+
+    # Calculate final score
+    base_score = sum(breakdown.values()) + bonus_score
+    final_score = max(0, base_score - penalty_score)
+
+    # Combine feedback
+    all_feedback = penalties + feedback_points
+
+    # --- Generate Improvement Advice ---
     improvement = ""
+    if penalty_score > 0:
+        improvement = "危険なキーワードを避け、具体的なアーキテクチャ（Gem分割、承認フロー、循環構造）を説明してください。"
+    elif final_score < 30:
+        all_feedback.append("⚠️ 設計哲学（Micro-Agent、有機的循環など）への言及が不足しています。")
+        improvement = "単なる機能説明ではなく、Gemの役割分割、承認フロー、循環構造を具体的に説明してください。"
+    elif final_score < 50:
+        improvement = "用語は使えていますが、具体的なInput/Output（I-P-O）の説明が不足しています。どのデータがトリガーになり、どう処理されるか明示してください。"
+    elif final_score < 70:
+        improvement = "良い提案です。さらに顧客の業界特有の課題に当てはめた具体例を追加すると説得力が増します。"
+    elif final_score >= 70:
+        all_feedback.append("🎯 設計哲学を適切に伝えられています。")
+        improvement = "素晴らしい提案です。この調子で顧客の懸念（セキュリティ、予算）にも先回りして対応しましょう。"
+
+    if final_score >= 90:
+        all_feedback.append("🏆 完璧です！Micro-Agent、Dynamic State、Organic Loopingの3要素が網羅されています。")
+
+    # Length check
     if len(user_input) < 30:
-        feedback_points.append("⚠️ 説明が短すぎます。詳細なアーキテクチャ説明が必要です。")
+        all_feedback.insert(0, "⚠️ 説明が短すぎます。詳細なアーキテクチャ説明が必要です。")
+        final_score = min(final_score, 20)
         improvement = "顧客の不安を払拭するため、具体的な仕組みを説明してください。"
-    elif score < 30:
-        feedback_points.append("⚠️ 設計哲学（Micro-Agent、有機的循環など）への言及が不足しています。")
-        improvement = "単なる機能説明ではなく、アーキテクチャの思想を伝えてください。"
-    elif score >= 70:
-        feedback_points.append("🎯 設計哲学を適切に伝えられています。")
-        improvement = "この調子で、顧客の具体的な課題に当てはめた説明も加えましょう。"
 
     return {
-        "score": score,
+        "score": min(final_score, 100),
         "breakdown": breakdown,
-        "feedback": feedback_points if feedback_points else ["⚠️ 評価ポイントとなるキーワードが見つかりませんでした。"],
+        "feedback": all_feedback if all_feedback else ["⚠️ 評価ポイントとなるキーワードが見つかりませんでした。"],
         "improvement": improvement or "設計哲学に基づいた説明を心がけてください。"
     }
 
