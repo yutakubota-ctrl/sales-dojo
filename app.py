@@ -600,6 +600,10 @@ else:
         # User Input (Text + Voice)
         input_col1, input_col2 = st.columns([6, 1])
 
+        # Initialize audio tracking in session state
+        if "last_audio_hash" not in st.session_state:
+            st.session_state.last_audio_hash = None
+
         with input_col2:
             if AUDIO_AVAILABLE:
                 st.markdown("**🎤 音声**")
@@ -608,18 +612,23 @@ else:
                     recording_color="#e74c3c",
                     neutral_color="#667eea",
                     icon_size="2x",
-                    pause_threshold=2.0
+                    pause_threshold=2.0,
+                    key="audio_recorder"
                 )
             else:
                 audio_bytes = None
 
-        # Process voice input
+        # Process voice input (only if new audio)
         voice_text = None
         if audio_bytes and AUDIO_AVAILABLE:
-            with st.spinner("音声を認識中..."):
-                voice_text = transcribe_audio(audio_bytes)
-                if voice_text:
-                    st.success(f"認識結果: {voice_text}")
+            # Create hash to detect if this is new audio
+            audio_hash = hash(audio_bytes)
+            if audio_hash != st.session_state.last_audio_hash:
+                st.session_state.last_audio_hash = audio_hash
+                with st.spinner("音声を認識中..."):
+                    voice_text = transcribe_audio(audio_bytes)
+                    if voice_text:
+                        st.success(f"認識結果: {voice_text}")
 
         with input_col1:
             prompt = st.chat_input("顧客への提案を入力してください...")
