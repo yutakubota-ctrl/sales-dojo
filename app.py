@@ -109,26 +109,49 @@ def evaluate_turn_logic(user_input, current_stage_enum):
 
 def run_demo_turn():
     """デモモードの1ターンを実行する処理"""
+    current_stage = st.session_state.current_stage
+
     demo_input = get_demo_sales_response(
         st.session_state.messages,
-        st.session_state.current_stage,
+        current_stage,
         st.session_state.customer_persona
     )
 
-    fb, next_stage = evaluate_turn_logic(demo_input, st.session_state.current_stage)
+    # Demo mode: Force advance to next stage (ideal progression)
+    stage_order = list(SPINStage)
+    current_idx = stage_order.index(current_stage)
+
+    # Move to next stage (cap at CLOSING)
+    if current_idx < len(stage_order) - 1:
+        next_stage = stage_order[current_idx + 1]
+    else:
+        next_stage = SPINStage.CLOSING
+
     st.session_state.current_stage = next_stage
 
     st.session_state.messages.append({"role": "user", "content": demo_input, "type": "demo"})
     st.session_state.review_log.append({
         "turn": len(st.session_state.messages) // 2,
         "is_human": False,
-        "stage": next_stage.value,
-        "feedback": fb
+        "stage": current_stage.value,  # Log the stage this response was FOR
+        "feedback": {
+            "status": "✅ Demo: Ideal Progression",
+            "comment": f"トップパフォーマーの{current_stage.value.split(' ')[0]}フェーズ対応",
+            "score": 95
+        }
     })
 
-    # Customer Response (Simulated)
+    # Customer Response (Simulated) - varies by stage
     time.sleep(0.5)
-    cust_resp = f"なるほど、{st.session_state.customer_persona['industry']}の現場としては一理ありますね。（関心が高まった）"
+    customer_responses = {
+        SPINStage.OPENING: f"はい、{st.session_state.customer_persona['industry']}の現場は確かに人手不足です。何かお考えがあるのですか？",
+        SPINStage.SITUATION: "そうですね、請求書処理には3名で月に約40時間かけています。",
+        SPINStage.PROBLEM: "おっしゃる通り、月末は特に残業が増えますね。ミスも時々発生します。",
+        SPINStage.IMPLICATION: "確かに、取引先への謝罪や修正作業で余計なコストがかかっていますね...",
+        SPINStage.NEED_PAYOFF: "なるほど、最終承認だけで済むなら魅力的ですね。具体的にはどういう形で始められますか？",
+        SPINStage.CLOSING: "その条件なら前向きに検討できそうです。社内で相談してみます。"
+    }
+    cust_resp = customer_responses.get(current_stage, "なるほど、続けてください。")
     st.session_state.messages.append({"role": "assistant", "content": cust_resp, "type": "ai"})
 
 
