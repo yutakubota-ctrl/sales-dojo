@@ -7,15 +7,24 @@ This script simulates a "malicious user" to find edge cases and vulnerabilities.
 Requires: pip install playwright pytest && playwright install
 """
 
+import sys
+import io
 import time
 import random
 import string
+
+# Fix Windows encoding issues
+if sys.platform == 'win32':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
 from playwright.sync_api import sync_playwright
 
 # --- Configuration ---
 TARGET_URL = "https://sales-dojo.onrender.com/"  # Or http://localhost:8501
-TEST_CYCLES = 10  # Number of test loops
+TEST_CYCLES = 5  # Number of test loops (reduced for faster testing)
 HEADLESS = False  # Set True for faster execution
+WAIT_AFTER_CLICK = 3  # Seconds to wait after clicking buttons
 
 # --- Test Case Generators (Edge Cases) ---
 def generate_edge_cases():
@@ -57,7 +66,7 @@ def run_stress_test():
     """Main stress test execution"""
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=HEADLESS)
-        context = browser.new_context()
+        context = browser.new_context(viewport={"width": 1920, "height": 1080})
         page = context.new_page()
 
         errors_found = []
@@ -74,14 +83,44 @@ def run_stress_test():
             # Phase 1: Initialize Scenario
             print("\n🔹 Phase 1: Initializing Scenario...")
             try:
-                if page.is_visible('button:has-text("新規シナリオ開始")'):
-                    page.click('button:has-text("新規シナリオ開始")')
-                    time.sleep(2)
-                    print("   ✅ Scenario initialized")
-                elif page.is_visible('button:has-text("リセット")'):
-                    page.click('button:has-text("リセット")')
-                    time.sleep(2)
-                    print("   ✅ Scenario reset")
+                # Wait for page to fully load
+                time.sleep(2)
+
+                # Find all buttons for debugging
+                all_buttons = page.locator('button')
+                print(f"   Found {all_buttons.count()} buttons on page")
+
+                # Turn off demo mode first if it's on
+                demo_toggle = page.locator('input[type="checkbox"]')
+                print(f"   Found {demo_toggle.count()} checkboxes")
+
+                # Start new scenario - try multiple selectors
+                scenario_started = False
+                for btn_text in ["新規シナリオ開始", "リセット", "開始"]:
+                    btn = page.locator(f'button:has-text("{btn_text}")')
+                    if btn.count() > 0:
+                        print(f"   Found button: {btn_text}")
+                        btn.first.click()
+                        time.sleep(WAIT_AFTER_CLICK)
+                        scenario_started = True
+                        print(f"   ✅ Clicked: {btn_text}")
+                        break
+
+                if not scenario_started:
+                    print("   ⚠️ No scenario button found")
+
+                # Wait for UI to update
+                time.sleep(2)
+
+                # Ensure demo mode is OFF so chat input is visible
+                # Streamlit toggles use a specific structure
+                page.screenshot(path="debug_before_demo.png")
+                print("   Screenshot saved: debug_before_demo.png")
+
+                # Take a screenshot to see current state
+                demo_toggle_container = page.locator('div:has-text("デモモード")')
+                print(f"   Demo containers found: {demo_toggle_container.count()}")
+
             except Exception as e:
                 print(f"   ⚠️ Could not initialize scenario: {e}")
 
@@ -94,12 +133,24 @@ def run_stress_test():
                 print(f"   [{i+1}/{min(len(edge_cases), TEST_CYCLES)}] Testing: {display_val}...")
 
                 try:
-                    # Find chat input
-                    chat_input = page.get_by_placeholder("提案を入力")
-                    if not chat_input.is_visible():
-                        chat_input = page.get_by_placeholder("あなたのターンです")
+                    # Find chat input (try multiple selectors)
+                    chat_input = None
+                    for placeholder in ["提案を入力", "あなたのターン", "入力"]:
+                        try:
+                            candidate = page.get_by_placeholder(placeholder)
+                            if candidate.count() > 0 and candidate.first.is_visible():
+                                chat_input = candidate.first
+                                break
+                        except:
+                            pass
 
-                    if chat_input.is_visible():
+                    # Try textarea selector as fallback
+                    if not chat_input:
+                        textarea = page.locator('textarea[data-testid="stChatInputTextArea"]')
+                        if textarea.count() > 0 and textarea.first.is_visible():
+                            chat_input = textarea.first
+
+                    if chat_input:
                         # Ensure demo mode is off for input
                         demo_toggles = page.locator('label:has-text("デモモード")')
                         if demo_toggles.count() > 0:
