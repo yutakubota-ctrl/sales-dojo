@@ -592,6 +592,7 @@ else:
     st.info("👈 左のサイドバーから '新規シナリオ開始' を押してください。")
 
 # --- Test Debug Info (Hidden Element for Automated Testing) ---
+import time as _time
 try:
     last_feedback = st.session_state.review_log[-1]['feedback'] if st.session_state.review_log else {}
     last_score = last_feedback.get('score', 0)
@@ -599,12 +600,14 @@ try:
     detected_stage = last_feedback.get('detected_stage', 'Unknown')
     next_stage_debug = last_feedback.get('next_stage', 'Unknown')
     current_stage_name = st.session_state.current_stage.name if isinstance(st.session_state.current_stage, SPINStage) else 'OPENING'
+    turn_count = len(st.session_state.review_log)
 except Exception:
     last_score = 0
     last_status = 'None'
     detected_stage = 'Unknown'
     next_stage_debug = 'Unknown'
     current_stage_name = 'OPENING'
+    turn_count = 0
 
 st.markdown(f"""
 <div id="test-debug-info" style="display:none;"
@@ -613,6 +616,8 @@ st.markdown(f"""
      data-last-status="{last_status}"
      data-detected-stage="{detected_stage}"
      data-next-stage="{next_stage_debug}"
+     data-turn-count="{turn_count}"
+     data-render-time="{int(_time.time() * 1000)}"
      data-simulation-active="{st.session_state.simulation_active}"
      data-demo-mode="{st.session_state.demo_mode}">
 </div>

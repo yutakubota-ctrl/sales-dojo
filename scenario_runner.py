@@ -158,13 +158,15 @@ def get_debug_info(page) -> dict:
                 "status": debug_el.get_attribute("data-last-status") or "None",
                 "detected_stage": debug_el.get_attribute("data-detected-stage") or "Unknown",
                 "next_stage": debug_el.get_attribute("data-next-stage") or "Unknown",
+                "turn_count": int(debug_el.get_attribute("data-turn-count") or 0),
+                "render_time": debug_el.get_attribute("data-render-time") or "0",
                 "simulation_active": debug_el.get_attribute("data-simulation-active") == "True",
                 "demo_mode": debug_el.get_attribute("data-demo-mode") == "True"
             }
     except Exception as e:
         print(f"      ⚠️ Could not read debug info: {e}")
 
-    return {"stage": "Unknown", "score": 0, "status": "None", "detected_stage": "Unknown", "next_stage": "Unknown", "simulation_active": False, "demo_mode": False}
+    return {"stage": "Unknown", "score": 0, "status": "None", "detected_stage": "Unknown", "next_stage": "Unknown", "turn_count": 0, "render_time": "0", "simulation_active": False, "demo_mode": False}
 
 
 def initialize_scenario(page):
@@ -297,20 +299,32 @@ def run_scenario(page, scenario: Scenario) -> dict:
                     results["turns"].append(turn_result)
                     continue
 
+            # Get turn count before submitting
+            pre_debug = get_debug_info(page)
+            pre_turn_count = pre_debug.get("turn_count", 0)
+
             # Submit input
             chat_input.fill(turn.input_text)
             chat_input.press("Enter")
 
             # Wait for Streamlit to process and rerun
-            time.sleep(1)  # Initial wait for input processing
-            try:
-                page.wait_for_load_state("networkidle", timeout=10000)
-            except:
-                pass  # Continue even if timeout
-            time.sleep(WAIT_AFTER_INPUT)  # Additional wait for UI update
+            time.sleep(2)  # Initial wait for input processing
 
-            # Get results
+            # Wait for turn_count to increase (indicating page has updated)
+            max_wait = 20  # Maximum seconds to wait
+            waited = 0
             debug_info = get_debug_info(page)
+            while debug_info.get("turn_count", 0) <= pre_turn_count and waited < max_wait:
+                time.sleep(1)
+                waited += 1
+                try:
+                    page.wait_for_load_state("networkidle", timeout=3000)
+                except:
+                    pass
+                debug_info = get_debug_info(page)
+
+            if waited >= max_wait:
+                print(f"      ⚠️ Timeout waiting for turn update (pre={pre_turn_count}, post={debug_info.get('turn_count', 0)})")
             actual_stage = debug_info.get("stage", "Unknown")
             actual_score = debug_info.get("score", 0)
             actual_status = debug_info.get("status", "None")
@@ -323,8 +337,10 @@ def run_scenario(page, scenario: Scenario) -> dict:
 
             detected = debug_info.get("detected_stage", "Unknown")
             next_stg = debug_info.get("next_stage", "Unknown")
+            turn_cnt = debug_info.get("turn_count", 0)
+            render_t = debug_info.get("render_time", "0")
             print(f"      Actual:   Stage={actual_stage}, Status={actual_status}, Score={actual_score}")
-            print(f"      Debug:    Detected={detected}, NextStage={next_stg}")
+            print(f"      Debug:    Detected={detected}, NextStage={next_stg}, TurnCount={turn_cnt}")
 
             # Validate Stage
             if turn.expected_stage_keyword not in actual_stage:
