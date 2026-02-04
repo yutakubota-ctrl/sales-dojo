@@ -123,12 +123,23 @@ def run_demo_turn():
     if not isinstance(st.session_state.current_stage, SPINStage):
         st.session_state.current_stage = SPINStage.OPENING
 
+    # Validate customer_persona has required keys
+    persona = st.session_state.customer_persona
+    if not persona or "industry" not in persona:
+        persona = {
+            "industry": "製造",
+            "position": "部長",
+            "personality": "論理的",
+            "budget": "500万円"
+        }
+        st.session_state.customer_persona = persona
+
     current_stage = st.session_state.current_stage
 
     demo_input = get_demo_sales_response(
         st.session_state.messages,
         current_stage,
-        st.session_state.customer_persona
+        persona
     )
 
     # Demo mode: Force advance to next stage (ideal progression)
@@ -158,7 +169,7 @@ def run_demo_turn():
     # Customer Response (Simulated) - varies by stage
     time.sleep(0.5)
     customer_responses = {
-        SPINStage.OPENING: f"はい、{st.session_state.customer_persona['industry']}の現場は確かに人手不足です。何かお考えがあるのですか？",
+        SPINStage.OPENING: f"はい、{persona['industry']}の現場は確かに人手不足です。何かお考えがあるのですか？",
         SPINStage.SITUATION: "そうですね、請求書処理には3名で月に約40時間かけています。",
         SPINStage.PROBLEM: "おっしゃる通り、月末は特に残業が増えますね。ミスも時々発生します。",
         SPINStage.IMPLICATION: "確かに、取引先への謝罪や修正作業で余計なコストがかかっていますね...",
