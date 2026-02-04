@@ -420,22 +420,56 @@ def generate_manager_feedback(user_input: str, customer_context: Dict) -> Dict:
     if any(x in user_input for x in ["学習に使われない", "学習除外", "データ保護"]):
         bonus_score += 5
         feedback_points.append("🛡️ データ学習除外への言及 - 顧客の懸念に対応")
-    if any(x in user_input for x in ["スモールスタート", "PoC", "実証", "パイロット"]):
-        bonus_score += 5
-        feedback_points.append("📊 スモールスタート戦略の提案 - 現実的なアプローチ")
-    if any(x in user_input for x in ["削減", "%", "工数", "コスト"]) and any(x in user_input for x in ["30", "50", "効果"]):
-        bonus_score += 5
-        feedback_points.append("📊 具体的なROI/効果の提示")
-    if any(x in user_input for x in ["ロードマップ", "来期", "拡張", "段階的"]):
-        bonus_score += 5
-        feedback_points.append("📊 将来展望の提示 - 長期的なパートナーシップ")
 
-    # Calculate final score
+    # === STRATEGY: Beachhead Strategy (営業戦略点) ===
+    strategy_score = 0
+    strategy_feedback = []
+
+    # Scope Down (範囲限定) - 15点
+    scope_keywords = ["特定業務", "絞って", "だけ", "のみ", "一部", "請求書", "日程調整", "採用", "問い合わせ"]
+    if any(x in user_input for x in ["まずは", "特定", "絞"]) and any(x in user_input for x in scope_keywords):
+        strategy_score += 15
+        strategy_feedback.append("📉 【Scope Down】対象範囲を限定した提案 - 全失注リスクを回避")
+
+    # Budget Fit (予算適合) - 10点: 部長決裁ライン（<500万）を意識
+    price_keywords = ["100万", "200万", "300万", "百万", "数百万", "トライアル", "PoC"]
+    if any(x in user_input for x in price_keywords):
+        strategy_score += 10
+        strategy_feedback.append("📉 【Budget Fit】部長決裁ライン（300万以下）を意識した金額提示")
+
+    # Cost Down ROI (短期ROI) - 10点
+    if any(x in user_input for x in ["時間", "工数", "削減"]) and any(x in user_input for x in ["月", "週", "日", "3ヶ月", "半年"]):
+        strategy_score += 10
+        strategy_feedback.append("📉 【Quick ROI】短期的な効果を数字で提示 - 稟議を通しやすい")
+
+    # Scalability (拡張性への言及) - 5点
+    if any(x in user_input for x in ["成功したら", "次は", "第一フェーズ", "フェーズ1", "将来的", "拡張"]):
+        strategy_score += 5
+        strategy_feedback.append("📉 【Scalability】将来の全体導入への布石を提示")
+
+    # スモールスタート + 金額の組み合わせ = 高評価
+    if any(x in user_input for x in ["スモールスタート", "PoC", "実証", "パイロット", "トライアル"]):
+        if any(x in user_input for x in price_keywords):
+            strategy_score += 10
+            strategy_feedback.append("🎯 【Beachhead Strategy】小さく始めて成功を積む - 理想的な着地点戦略")
+        else:
+            strategy_score += 5
+            strategy_feedback.append("⚠️ スモールスタートは良いが、具体的な金額感（100-300万）を提示すると説得力が増します")
+
+    # BAD: 単なる値引き（機能を削らない安売り）
+    if any(x in user_input for x in ["値下げ", "割引", "安く"]):
+        if not any(x in user_input for x in ["絞", "限定", "特定", "だけ"]):
+            strategy_score -= 15
+            strategy_feedback.append("🚫 【Bad Move】機能を削らず値引きだけで解決しようとしています。『範囲を絞ってコストを下げる』が正解です。")
+
+    # Calculate final score (技術点 + 戦略点)
     base_score = sum(breakdown.values()) + bonus_score
-    final_score = max(0, base_score - penalty_score)
+    tech_score = max(0, base_score - penalty_score)
+    total_score = tech_score + strategy_score
+    final_score = min(total_score, 100)
 
     # Combine feedback
-    all_feedback = penalties + feedback_points
+    all_feedback = penalties + feedback_points + strategy_feedback
 
     # --- Generate Improvement Advice ---
     improvement = ""
@@ -462,7 +496,9 @@ def generate_manager_feedback(user_input: str, customer_context: Dict) -> Dict:
         improvement = "顧客の不安を払拭するため、具体的な仕組みを説明してください。"
 
     return {
-        "score": min(final_score, 100),
+        "score": final_score,
+        "tech_score": tech_score,
+        "strategy_score": max(0, strategy_score),
         "breakdown": breakdown,
         "feedback": all_feedback if all_feedback else ["⚠️ 評価ポイントとなるキーワードが見つかりませんでした。"],
         "improvement": improvement or "設計哲学に基づいた説明を心がけてください。"
@@ -503,6 +539,29 @@ def generate_customer_response(user_input: str, context: Dict) -> str:
     good_keywords = ["エージェント", "Gem", "循環", "ループ", "人間", "承認", "連携"]
     keyword_hits = sum(1 for kw in good_keywords if kw in user_input)
     st.session_state.trust_level = min(trust + keyword_hits * 10, 100)
+
+    # === Beachhead Strategy: スモールスタート提案への軟化ロジック ===
+    compromise_keywords = ["スモールスタート", "PoC", "トライアル", "まずは", "絞って", "特定業務", "だけ"]
+    price_keywords = ["100万", "200万", "300万", "百万"]
+
+    has_compromise = any(kw in user_input for kw in compromise_keywords)
+    has_price = any(kw in user_input for kw in price_keywords)
+
+    if has_compromise and has_price:
+        # スモールスタート + 金額提示 → 大幅に信頼度UP & 特別な応答
+        st.session_state.trust_level = min(st.session_state.trust_level + 30, 100)
+        return f"""...{context['budget'].split('（')[0]}の範囲内ですね。それなら私の決裁で進められます。
+
+特定の業務に絞って、まず成果を見てみる形なら現実的ですね。{context['industry']}では特に{'請求書処理' if context['industry'] in ['製造業', '物流', '小売'] else '問い合わせ対応'}がボトルネックなので、そこからお願いできますか？
+
+3ヶ月後に効果を測定して、良ければ次のフェーズに進みましょう。"""
+
+    elif has_compromise:
+        # スモールスタート提案あり（金額なし）→ 前向きだが金額確認
+        st.session_state.trust_level = min(st.session_state.trust_level + 15, 100)
+        return f"""なるほど、小さく始めるというのは賢明ですね。
+
+具体的にどのくらいの予算感で、どの業務から始めることを想定されていますか？{context['budget']}の範囲内なら、私の判断で進められます。"""
 
     if trust < 20:
         responses = [
@@ -652,11 +711,17 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown("""
-    **📋 評価基準:**
+    **📋 技術点 (100点満点):**
     - Micro-Agent Strategy (30点)
     - 動的ステート管理 (25点)
     - 有機的循環 (25点)
     - Human-in-the-Loop (20点)
+
+    **📉 戦略点 (ボーナス):**
+    - Scope Down (範囲限定)
+    - Budget Fit (予算適合)
+    - Quick ROI (短期効果)
+    - Scalability (拡張性)
     """)
 
 # Main Interface
@@ -778,6 +843,21 @@ else:
                 cols = st.columns(2)
                 cols[0].metric("Organic Loop", f"{bd['organic_looping']}/25")
                 cols[1].metric("Human-in-Loop", f"{bd['human_in_loop']}/20")
+
+            # Strategy Score Indicator (営業戦略点)
+            st.markdown("---")
+            st.markdown("**📉 Cost/Scope Logic**")
+            tech_score = last_review['feedback'].get('tech_score', score)
+            strategy_score = last_review['feedback'].get('strategy_score', 0)
+
+            strat_cols = st.columns(2)
+            strat_cols[0].metric("技術点", f"{tech_score}")
+            strat_cols[1].metric("戦略点", f"{strategy_score}", delta=f"+{strategy_score}" if strategy_score > 0 else None)
+
+            if strategy_score >= 20:
+                st.success("🎯 **Beachhead Strategy成功** - 小さく始めて勝ちパターンを作る提案")
+            elif strategy_score > 0:
+                st.warning("📉 スモールスタートの兆候あり - 具体的な金額を提示するとさらに効果的")
 
             # Feedback Box
             review_box_class = get_review_box_class(score)
