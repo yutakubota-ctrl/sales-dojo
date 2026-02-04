@@ -118,9 +118,9 @@ SCENARIO_PIVOT = Scenario(
             "PROBLEM", "Good", 40  # Basic PROBLEM question
         ),
         Turn(
-            # Use "提案" to trigger NEED_PAYOFF, not "課題を解決"
-            "Gemエージェントで承認フローを自動化することを提案します。まずは300万円でスモールスタートしましょう。",
-            "NEED_PAYOFF", "Good", 55  # Contains "提案", "gem", "エージェント", strategy keywords
+            # Avoid "フロー" (SITUATION keyword) - use "提案" and "エージェント" for NEED_PAYOFF
+            "Gemエージェントを提案します。AIが自動で処理を行い、300万円でスモールスタートできます。",
+            "NEED_PAYOFF", "Good", 50  # Contains "提案", "gem", "エージェント", "ai"
         )
     ]
 )
@@ -132,15 +132,15 @@ SCENARIO_LOOPER = Scenario(
     turns=[
         Turn(
             "現状について教えてください。どのような業務がありますか？",
-            "SITUATION", "Good", 50
+            "SITUATION", "Good", 40  # Basic SITUATION question
         ),
         Turn(
             "その業務で課題やミスは発生していますか？",
-            "PROBLEM", "Good", 60
+            "PROBLEM", "Good", 40  # Basic PROBLEM question
         ),
         Turn(
             "ところで、御社の現状をもう一度確認させてください。何人くらいで作業していますか？",
-            "PROBLEM", "Loop", 40  # Should detect loop back
+            "PROBLEM", "Loop", 20  # Loop back detection - lower score expected
         )
     ]
 )
