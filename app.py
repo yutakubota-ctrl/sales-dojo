@@ -98,20 +98,74 @@ def safe_get_persona():
 def get_customer_reaction(stage: SPINStage, score: int, persona: dict) -> str:
     """
     [Customer Agent]
-    Dynamic customer response based on score and current stage
+    Dynamic customer response based on score, stage, and conversation history
+    Provides varied responses to avoid repetition
     """
-    if score < 40:
-        return f"（{persona.get('position', '担当者')}は不審そうな顔をしている）...話が飛びすぎていませんか？もう少し現状の話をさせてください。"
+    # Initialize response tracking in session_state
+    if "response_counter" not in st.session_state:
+        st.session_state.response_counter = {}
 
+    stage_key = stage.name
+    if stage_key not in st.session_state.response_counter:
+        st.session_state.response_counter[stage_key] = 0
+
+    # Get current counter and increment for next call
+    counter = st.session_state.response_counter[stage_key]
+    st.session_state.response_counter[stage_key] = counter + 1
+
+    industry = persona.get('industry', '業界')
+    position = persona.get('position', '担当者')
+    budget = persona.get('budget', '予算')
+
+    if score < 40:
+        low_score_responses = [
+            f"（{position}は不審そうな顔をしている）...話が飛びすぎていませんか？もう少し現状の話をさせてください。",
+            f"（{position}は困惑している）すみません、もう少し順序立てて説明していただけますか？",
+            f"（{position}は首をかしげている）その話はまだ早いと思います。まずは状況を整理させてください。"
+        ]
+        return low_score_responses[counter % len(low_score_responses)]
+
+    # Multiple varied responses per stage
     reactions = {
-        SPINStage.OPENING: f"はい、{persona.get('industry', '業界')}も変化が早くて大変ですよ。今日はどのようなご用件で？",
-        SPINStage.SITUATION: "現在はExcelと手入力で対応しています。担当者は3名ほどですね。月末は特に忙しいです。",
-        SPINStage.PROBLEM: "ええ、まさにその通りです。月末は残業続きで、入力ミスも散見されます...正直、担当者も疲弊しています。",
-        SPINStage.IMPLICATION: "言われてみれば...ミスによる手戻りコストや、取引先への信頼低下は計り知れませんね。経営層も気にしています。",
-        SPINStage.NEED_PAYOFF: "なるほど、AIエージェントがそれを代行してくれるなら、本来の業務に集中できそうです。具体的に聞かせてください。",
-        SPINStage.CLOSING: f"わかりました。その{persona.get('budget', '予算')}内のスモールスタートなら、私の決裁で進められます。契約しましょう。"
+        SPINStage.OPENING: [
+            f"はい、{industry}も変化が早くて大変ですよ。今日はどのようなご用件で？",
+            f"お時間いただきありがとうございます。{industry}では今、様々な課題がありますね。",
+            f"はじめまして。{industry}の状況についてお話しできればと思います。"
+        ],
+        SPINStage.SITUATION: [
+            "現在はExcelと手入力で対応しています。担当者は3名ほどですね。月末は特に忙しいです。",
+            "うちは手作業が多くて...データ入力に週20時間以上かかっています。",
+            "基幹システムはあるんですが、Excelでの二重入力が発生していて効率が悪いです。",
+            "業務フローは複雑で、担当者によってやり方がバラバラなのが現状です。"
+        ],
+        SPINStage.PROBLEM: [
+            "ええ、まさにその通りです。月末は残業続きで、入力ミスも散見されます...正直、担当者も疲弊しています。",
+            "おっしゃる通り、ミスが多くてダブルチェックに時間がかかっています。",
+            "確かに課題は認識しています。特に繁忙期のミス率が高くて困っています。",
+            "人手不足もあって、チェック体制が不十分なのは否めません。"
+        ],
+        SPINStage.IMPLICATION: [
+            "言われてみれば...ミスによる手戻りコストや、取引先への信頼低下は計り知れませんね。経営層も気にしています。",
+            "確かに...このままでは競合に遅れを取る可能性がありますね。",
+            "そうですね、人材流出のリスクもあります。若手が辞めてしまうと大変です。",
+            "経営陣からも業務効率化の圧力がかかっていて、正直焦っています。"
+        ],
+        SPINStage.NEED_PAYOFF: [
+            "なるほど、AIエージェントがそれを代行してくれるなら、本来の業務に集中できそうです。具体的に聞かせてください。",
+            "自動化できれば、戦略的な業務にリソースを割けますね。興味があります。",
+            "コスト削減と品質向上の両立ができるなら、ぜひ検討したいです。",
+            "その提案は魅力的です。具体的な導入ステップを教えてください。"
+        ],
+        SPINStage.CLOSING: [
+            f"わかりました。その{budget}内のスモールスタートなら、私の決裁で進められます。契約しましょう。",
+            f"トライアルから始められるなら安心です。{budget}で進めましょう。",
+            f"リスクが低いなら始めてみたいです。契約の手続きを進めてください。",
+            f"説得力のある提案でした。上に掛け合ってみます...いえ、私の権限で決めます。"
+        ]
     }
-    return reactions.get(stage, "なるほど、続けてください。")
+
+    stage_responses = reactions.get(stage, ["なるほど、続けてください。"])
+    return stage_responses[counter % len(stage_responses)]
 
 
 @resilient_op
@@ -135,26 +189,30 @@ def get_demo_sales_response(stage: SPINStage, persona: dict) -> str:
 def evaluate_turn_logic(user_input: str, current_stage_enum: SPINStage):
     """
     [Manager Agent]
-    SPIN progression evaluation logic
+    SPIN progression evaluation logic with improved stage detection
     """
     if not user_input:
         return {"status": "⚠️ Empty", "comment": "入力がありません", "score": 0}, current_stage_enum
 
     input_text = user_input.lower()
 
-    # Keyword-based stage detection
+    # Keyword-based stage detection (ordered by priority - later stages checked first)
     stage_keywords = {
-        SPINStage.OPENING: ["はじめ", "挨拶", "時間", "伺い", "よろしく", "ありがとう"],
-        SPINStage.SITUATION: ["現状", "フロー", "人数", "どのよう", "いかが", "状況"],
-        SPINStage.PROBLEM: ["課題", "困っ", "ミス", "手間", "問題", "悩み"],
-        SPINStage.IMPLICATION: ["影響", "リスク", "コスト", "もし", "深刻", "損失"],
-        SPINStage.NEED_PAYOFF: ["解決", "価値", "できたら", "役立", "提案", "gem", "エージェント", "ai"],
-        SPINStage.CLOSING: ["契約", "金額", "poc", "始め", "いかが", "トライアル", "スモールスタート"]
+        SPINStage.CLOSING: ["契約", "金額", "poc", "始め", "開始", "トライアル", "スモールスタート", "決裁", "進め"],
+        SPINStage.NEED_PAYOFF: ["解決", "価値", "できたら", "役立", "提案", "gem", "エージェント", "ai", "自動化", "効率"],
+        SPINStage.IMPLICATION: ["影響", "リスク", "コスト", "もし", "深刻", "損失", "遅れ", "危険"],
+        SPINStage.PROBLEM: ["課題", "困っ", "ミス", "手間", "問題", "悩み", "大変", "疲弊"],
+        SPINStage.SITUATION: ["現状", "フロー", "人数", "どのよう", "状況", "担当", "業務"],
+        SPINStage.OPENING: ["はじめ", "挨拶", "時間", "伺い", "よろしく", "ありがとう", "用件"]
     }
 
-    # Detect stage from keywords
+    # Detect stage from keywords - check from CLOSING to OPENING (prioritize later stages)
     detected_stage = current_stage_enum
-    for stage, keywords in stage_keywords.items():
+    stage_priority = [SPINStage.CLOSING, SPINStage.NEED_PAYOFF, SPINStage.IMPLICATION,
+                      SPINStage.PROBLEM, SPINStage.SITUATION, SPINStage.OPENING]
+
+    for stage in stage_priority:
+        keywords = stage_keywords.get(stage, [])
         if any(k in input_text for k in keywords):
             detected_stage = stage
             break
@@ -165,34 +223,53 @@ def evaluate_turn_logic(user_input: str, current_stage_enum: SPINStage):
     det_idx = stage_list.index(detected_stage)
 
     if det_idx > curr_idx + 1:
-        # Skipping stages
-        feedback = {
-            "status": "⚠️ Skipping Stages",
-            "comment": f"焦りすぎです。現在は「{current_stage_enum.value}」フェーズです。段階を飛ばしています。",
-            "score": 40
-        }
-        next_stage = current_stage_enum
-    elif det_idx < curr_idx:
-        # Loop back
-        feedback = {
-            "status": "🔄 Loop Back",
-            "comment": "確認ありがとうございます。ただ、話を進展させましょう。",
-            "score": 60
-        }
-        next_stage = current_stage_enum
-    elif det_idx == curr_idx:
-        # Same stage - digging deeper
-        feedback = {
-            "status": "➡️ Deepening",
-            "comment": "良い深掘りです。もう少しで次のステージへ進めます。",
-            "score": 75
-        }
-        # Allow advancement if input is substantial
-        if len(input_text) > 30:
-            next_stage = stage_list[min(curr_idx + 1, len(stage_list) - 1)]
-            feedback["status"] = "✅ Good Progression"
-            feedback["score"] = 85
+        # Skipping stages - but allow if we're at NEED_PAYOFF going to CLOSING
+        if current_stage_enum == SPINStage.NEED_PAYOFF and detected_stage == SPINStage.CLOSING:
+            feedback = {
+                "status": "✅ Perfect Progression",
+                "comment": f"クロージングへ進みました！",
+                "score": 100
+            }
+            next_stage = detected_stage
         else:
+            feedback = {
+                "status": "⚠️ Skipping Stages",
+                "comment": f"焦りすぎです。現在は「{current_stage_enum.value}」フェーズです。",
+                "score": 40
+            }
+            next_stage = current_stage_enum
+    elif det_idx < curr_idx:
+        # Loop back - but still allow progression if input is substantial
+        if len(input_text) > 50:
+            # Long input may contain multiple stage keywords, allow progression
+            next_stage = stage_list[min(curr_idx + 1, len(stage_list) - 1)]
+            feedback = {
+                "status": "✅ Good Progression",
+                "comment": "詳細な説明で次へ進みました。",
+                "score": 85
+            }
+        else:
+            feedback = {
+                "status": "🔄 Loop Back",
+                "comment": "確認ありがとうございます。話を進展させましょう。",
+                "score": 60
+            }
+            next_stage = current_stage_enum
+    elif det_idx == curr_idx:
+        # Same stage - digging deeper, always allow progression with substantial input
+        if len(input_text) > 20:
+            next_stage = stage_list[min(curr_idx + 1, len(stage_list) - 1)]
+            feedback = {
+                "status": "✅ Good Progression",
+                "comment": f"良い深掘りです。{next_stage.value}へ進みます。",
+                "score": 85
+            }
+        else:
+            feedback = {
+                "status": "➡️ Deepening",
+                "comment": "良い深掘りです。もう少しで次のステージへ進めます。",
+                "score": 75
+            }
             next_stage = current_stage_enum
     else:
         # Proper advancement
@@ -204,7 +281,7 @@ def evaluate_turn_logic(user_input: str, current_stage_enum: SPINStage):
         next_stage = detected_stage
 
     # Bonus for strategy keywords
-    strategy_keywords = ["スモールスタート", "トライアル", "poc", "300万", "500万"]
+    strategy_keywords = ["スモールスタート", "トライアル", "poc", "300万", "500万", "1000万"]
     if any(k in input_text for k in strategy_keywords):
         feedback["score"] = min(feedback["score"] + 10, 100)
         feedback["comment"] += " 戦略的なアプローチです！"
@@ -291,8 +368,8 @@ with st.sidebar:
                         cust_text = get_customer_reaction(next_st, fb.get("score", 0), persona)
                         st.session_state.messages.append({"role": "assistant", "content": cust_text, "type": "ai"})
 
-                        # Check for deal closure
-                        if next_st == SPINStage.CLOSING and fb.get("score", 0) >= 80:
+                        # Check for deal closure - close if we reach CLOSING stage with decent score
+                        if next_st == SPINStage.CLOSING and fb.get("score", 0) >= 60:
                             st.session_state.deal_closed = True
 
                         st.rerun()
@@ -364,8 +441,8 @@ if st.session_state.simulation_active:
                     cust_text = get_customer_reaction(next_st, fb.get("score", 0), persona)
                     st.session_state.messages.append({"role": "assistant", "content": cust_text, "type": "ai"})
 
-                    # Check for deal closure
-                    if next_st == SPINStage.CLOSING and fb.get("score", 0) >= 80:
+                    # Check for deal closure - close if we reach CLOSING stage with decent score
+                    if next_st == SPINStage.CLOSING and fb.get("score", 0) >= 60:
                         st.session_state.deal_closed = True
                         st.session_state.auto_run = False
                         st.balloons()
@@ -412,8 +489,8 @@ if st.session_state.simulation_active:
                 cust_text = get_customer_reaction(next_st, fb.get("score", 0), persona)
                 st.session_state.messages.append({"role": "assistant", "content": cust_text, "type": "ai"})
 
-                # Check for deal closure
-                if next_st == SPINStage.CLOSING and fb.get("score", 0) >= 80:
+                # Check for deal closure - close if we reach CLOSING stage with decent score
+                if next_st == SPINStage.CLOSING and fb.get("score", 0) >= 60:
                     st.session_state.deal_closed = True
                     st.balloons()
 
