@@ -72,16 +72,31 @@ def init_state():
         "demo_mode": False,
         "auto_run": False,
         "auto_run_first": True,
-        "current_stage": SPINStage.OPENING,
+        "current_stage_name": "OPENING",  # Store as string to avoid enum serialization issues
         "error_count": 0
     }
     for key, val in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = val
 
-    # Validate current_stage is valid
-    if not isinstance(st.session_state.get("current_stage"), SPINStage):
-        st.session_state.current_stage = SPINStage.OPENING
+    # Validate current_stage_name is valid
+    valid_names = [s.name for s in SPINStage]
+    if st.session_state.get("current_stage_name") not in valid_names:
+        st.session_state.current_stage_name = "OPENING"
+
+
+def get_current_stage() -> SPINStage:
+    """Get current stage as SPINStage enum"""
+    name = st.session_state.get("current_stage_name", "OPENING")
+    try:
+        return SPINStage[name]
+    except (KeyError, TypeError):
+        return SPINStage.OPENING
+
+
+def set_current_stage(stage: SPINStage):
+    """Set current stage from SPINStage enum"""
+    st.session_state.current_stage_name = stage.name
 
 
 init_state()
@@ -261,14 +276,10 @@ def get_improvement_advice(breakdown, total_score):
 def run_demo_turn():
     """Execute one demo turn with full error handling"""
     try:
-        # Validate state
-        if not isinstance(st.session_state.current_stage, SPINStage):
-            st.session_state.current_stage = SPINStage.OPENING
-
         persona = safe_get_persona()
         st.session_state.customer_persona = persona
 
-        current_stage = st.session_state.current_stage
+        current_stage = get_current_stage()
 
         # Generate demo response
         demo_input = get_demo_sales_response(current_stage, persona)
@@ -283,7 +294,7 @@ def run_demo_turn():
             current_idx = 0
 
         next_stage = stage_order[min(current_idx + 1, len(stage_order) - 1)]
-        st.session_state.current_stage = next_stage
+        set_current_stage(next_stage)
 
         # Add messages
         st.session_state.messages.append({
@@ -336,7 +347,7 @@ def init_scenario():
     st.session_state.messages = []
     st.session_state.review_log = []
     st.session_state.simulation_active = True
-    st.session_state.current_stage = SPINStage.OPENING
+    set_current_stage(SPINStage.OPENING)  # Use helper to avoid enum serialization issues
     st.session_state.auto_run = False
     st.session_state.auto_run_first = True
     st.session_state.error_count = 0
@@ -413,13 +424,10 @@ with st.sidebar:
 
     try:
         stage_names = ["OPENING", "SITUATION", "PROBLEM", "IMPLICATION", "NEED_PAYOFF", "CLOSING"]
-        if isinstance(st.session_state.current_stage, SPINStage):
-            stage_idx = stage_names.index(st.session_state.current_stage.name)
-        else:
-            stage_idx = 0
-            st.session_state.current_stage = SPINStage.OPENING
+        current_stage = get_current_stage()
+        stage_idx = stage_names.index(current_stage.name)
         st.progress((stage_idx + 1) / len(stage_names))
-        st.caption(f"Stage: {st.session_state.current_stage.value}")
+        st.caption(f"Stage: {current_stage.value}")
     except Exception:
         st.progress(0.17)
         st.caption("Stage: Opening")
@@ -439,7 +447,7 @@ if st.session_state.simulation_active:
         # Auto-Run Logic
         if st.session_state.demo_mode and st.session_state.auto_run:
             try:
-                current_stage = st.session_state.current_stage
+                current_stage = get_current_stage()
                 if current_stage == SPINStage.CLOSING and len(st.session_state.messages) > 10:
                     st.success("🎉 デモが完了しました。")
                     st.session_state.auto_run = False
@@ -478,9 +486,9 @@ if st.session_state.simulation_active:
                 try:
                     clean_prompt = sanitize_input(prompt)
                     if clean_prompt:
-                        fb, next_stage = evaluate_turn_logic(clean_prompt, st.session_state.current_stage)
+                        fb, next_stage = evaluate_turn_logic(clean_prompt, get_current_stage())
                         if fb:
-                            st.session_state.current_stage = next_stage
+                            set_current_stage(next_stage)  # Use helper to ensure persistence
                             st.session_state.messages.append({
                                 "role": "user",
                                 "content": clean_prompt,
@@ -599,7 +607,7 @@ try:
     last_status = last_feedback.get('status', 'None')
     detected_stage = last_feedback.get('detected_stage', 'Unknown')
     next_stage_debug = last_feedback.get('next_stage', 'Unknown')
-    current_stage_name = st.session_state.current_stage.name if isinstance(st.session_state.current_stage, SPINStage) else 'OPENING'
+    current_stage_name = get_current_stage().name  # Use helper function
     turn_count = len(st.session_state.review_log)
 except Exception:
     last_score = 0
