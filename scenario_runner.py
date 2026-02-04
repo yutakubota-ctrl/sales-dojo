@@ -29,7 +29,7 @@ from playwright.sync_api import sync_playwright
 # --- Configuration ---
 TARGET_URL = "https://sales-dojo.onrender.com/"  # Change to localhost for local testing
 HEADLESS = False  # Set True for CI/CD
-WAIT_AFTER_INPUT = 3  # Seconds to wait after each input
+WAIT_AFTER_INPUT = 5  # Seconds to wait after each input (increased for Render)
 
 
 @dataclass
@@ -156,13 +156,15 @@ def get_debug_info(page) -> dict:
                 "stage": debug_el.get_attribute("data-stage") or "Unknown",
                 "score": float(debug_el.get_attribute("data-last-score") or 0),
                 "status": debug_el.get_attribute("data-last-status") or "None",
+                "detected_stage": debug_el.get_attribute("data-detected-stage") or "Unknown",
+                "next_stage": debug_el.get_attribute("data-next-stage") or "Unknown",
                 "simulation_active": debug_el.get_attribute("data-simulation-active") == "True",
                 "demo_mode": debug_el.get_attribute("data-demo-mode") == "True"
             }
     except Exception as e:
         print(f"      ⚠️ Could not read debug info: {e}")
 
-    return {"stage": "Unknown", "score": 0, "status": "None", "simulation_active": False, "demo_mode": False}
+    return {"stage": "Unknown", "score": 0, "status": "None", "detected_stage": "Unknown", "next_stage": "Unknown", "simulation_active": False, "demo_mode": False}
 
 
 def initialize_scenario(page):
@@ -192,8 +194,10 @@ def initialize_scenario(page):
 
 def find_chat_input(page):
     """Find the chat input element with multiple fallback selectors"""
+    # Try textarea first (Streamlit chat input is typically a textarea)
     selectors = [
         'textarea[data-testid="stChatInputTextArea"]',
+        'textarea',  # Generic textarea
         'input[placeholder*="提案"]',
         'input[placeholder*="入力"]',
     ]
@@ -201,19 +205,38 @@ def find_chat_input(page):
     for selector in selectors:
         try:
             el = page.locator(selector)
+            if el.count() > 0:
+                for i in range(el.count()):
+                    elem = el.nth(i)
+                    if elem.is_visible():
+                        return elem
+        except:
+            pass
+
+    # Try placeholder-based search with partial match
+    placeholders = [
+        "提案を入力してください",
+        "提案を入力",
+        "入力してください",
+        "入力"
+    ]
+    for placeholder in placeholders:
+        try:
+            el = page.get_by_placeholder(placeholder, exact=False)
             if el.count() > 0 and el.first.is_visible():
                 return el.first
         except:
             pass
 
-    # Try placeholder-based search
-    for placeholder in ["提案を入力", "入力してください"]:
-        try:
-            el = page.get_by_placeholder(placeholder)
-            if el.count() > 0 and el.first.is_visible():
-                return el.first
-        except:
-            pass
+    # Last resort: find any visible input/textarea in the chat area
+    try:
+        chat_container = page.locator('[data-testid="stChatInput"]')
+        if chat_container.count() > 0:
+            textarea = chat_container.locator('textarea')
+            if textarea.count() > 0 and textarea.first.is_visible():
+                return textarea.first
+    except:
+        pass
 
     return None
 
@@ -277,7 +300,14 @@ def run_scenario(page, scenario: Scenario) -> dict:
             # Submit input
             chat_input.fill(turn.input_text)
             chat_input.press("Enter")
-            time.sleep(WAIT_AFTER_INPUT)
+
+            # Wait for Streamlit to process and rerun
+            time.sleep(1)  # Initial wait for input processing
+            try:
+                page.wait_for_load_state("networkidle", timeout=10000)
+            except:
+                pass  # Continue even if timeout
+            time.sleep(WAIT_AFTER_INPUT)  # Additional wait for UI update
 
             # Get results
             debug_info = get_debug_info(page)
@@ -291,7 +321,10 @@ def run_scenario(page, scenario: Scenario) -> dict:
                 "status": actual_status
             }
 
+            detected = debug_info.get("detected_stage", "Unknown")
+            next_stg = debug_info.get("next_stage", "Unknown")
             print(f"      Actual:   Stage={actual_stage}, Status={actual_status}, Score={actual_score}")
+            print(f"      Debug:    Detected={detected}, NextStage={next_stg}")
 
             # Validate Stage
             if turn.expected_stage_keyword not in actual_stage:

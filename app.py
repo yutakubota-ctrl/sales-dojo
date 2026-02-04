@@ -231,7 +231,9 @@ def evaluate_turn_logic(user_input, current_stage_enum):
         "comment": feedback_comment,
         "score": total_score,
         "breakdown": breakdown,
-        "improvement": improvement
+        "improvement": improvement,
+        "detected_stage": detected_stage.name,
+        "next_stage": next_stage.name
     }, next_stage
 
 
@@ -591,12 +593,17 @@ else:
 
 # --- Test Debug Info (Hidden Element for Automated Testing) ---
 try:
-    last_score = st.session_state.review_log[-1]['feedback']['score'] if st.session_state.review_log else 0
-    last_status = st.session_state.review_log[-1]['feedback']['status'] if st.session_state.review_log else 'None'
+    last_feedback = st.session_state.review_log[-1]['feedback'] if st.session_state.review_log else {}
+    last_score = last_feedback.get('score', 0)
+    last_status = last_feedback.get('status', 'None')
+    detected_stage = last_feedback.get('detected_stage', 'Unknown')
+    next_stage_debug = last_feedback.get('next_stage', 'Unknown')
     current_stage_name = st.session_state.current_stage.name if isinstance(st.session_state.current_stage, SPINStage) else 'OPENING'
 except Exception:
     last_score = 0
     last_status = 'None'
+    detected_stage = 'Unknown'
+    next_stage_debug = 'Unknown'
     current_stage_name = 'OPENING'
 
 st.markdown(f"""
@@ -604,6 +611,8 @@ st.markdown(f"""
      data-stage="{current_stage_name}"
      data-last-score="{last_score}"
      data-last-status="{last_status}"
+     data-detected-stage="{detected_stage}"
+     data-next-stage="{next_stage_debug}"
      data-simulation-active="{st.session_state.simulation_active}"
      data-demo-mode="{st.session_state.demo_mode}">
 </div>
