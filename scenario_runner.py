@@ -104,23 +104,26 @@ SCENARIO_RUSHER = Scenario(
     ]
 )
 
-# Scenario 3: The Pivot - Handling Budget Objection with Small Start
+# Scenario 3: The Pivot - Proper SPIN progression with strategy keywords
 SCENARIO_PIVOT = Scenario(
     name="The Pivot Master",
-    description="Handles budget objection by pivoting to small start proposal",
+    description="Proper SPIN progression from SITUATION to CLOSING with strategy keywords",
     turns=[
         Turn(
             "御社の現状について教えてください。どのような業務に人手がかかっていますか？",
-            "SITUATION", "Good", 40  # Basic SITUATION question
+            "SITUATION", "Good", 40  # SITUATION - "現状", "どのよう"
         ),
         Turn(
-            "その業務でミスや課題が発生することはありますか？",
-            "PROBLEM", "Good", 40  # Basic PROBLEM question
+            "その業務で課題が発生することはありますか？困っていることは？",
+            "PROBLEM", "Good", 40  # PROBLEM - "課題", "困っ"
         ),
         Turn(
-            # Avoid "フロー" (SITUATION keyword) - use "提案" and "エージェント" for NEED_PAYOFF
-            "Gemエージェントを提案します。AIが自動で処理を行い、300万円でスモールスタートできます。",
-            "NEED_PAYOFF", "Good", 50  # Contains "提案", "gem", "エージェント", "ai"
+            "それが続くと深刻な影響やリスクが出てきますよね？コストも増大しませんか？",
+            "IMPLICATION", "Good", 40  # IMPLICATION - "影響", "リスク", "コスト", "深刻"
+        ),
+        Turn(
+            "Gemエージェントを提案します。AIが自動化を解決します。",
+            "NEED_PAYOFF", "Good", 50  # NEED_PAYOFF - "gem", "エージェント", "ai", "提案", "解決"
         )
     ]
 )
