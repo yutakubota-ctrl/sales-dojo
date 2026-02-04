@@ -126,6 +126,70 @@ def sanitize_input(text, max_length=500):
     return clean[:max_length].strip()
 
 
+def get_customer_response(stage: SPINStage, feedback: dict, persona: dict) -> str:
+    """Generate dynamic customer response based on stage, feedback, and persona"""
+    status = feedback.get("status", "")
+    score = feedback.get("score", 0)
+    personality = persona.get("personality", "慎重派")
+    industry = persona.get("industry", "製造")
+
+    # Alert responses (when salesperson skips stages or makes mistakes)
+    if "Alert" in status:
+        alert_responses = [
+            "ちょっと待ってください。いきなり契約の話をされても困ります...",
+            "話が急すぎますね。まずは当社の状況を理解していただけますか？",
+            "うーん、具体的なメリットがまだ見えません。もう少し順を追って説明してもらえますか？",
+            "金額の前に、本当に我々の課題を解決できるのか確認させてください。",
+        ]
+        return random.choice(alert_responses)
+
+    # Loop back responses
+    if "Loop" in status:
+        loop_responses = [
+            "その質問は先ほどもしましたよね？話を先に進めていただけますか。",
+            "同じ話の繰り返しになっていませんか？次のステップに進みましょう。",
+            "既にお答えしたと思いますが...時間も限られていますので。",
+        ]
+        return random.choice(loop_responses)
+
+    # Good progression responses based on stage
+    stage_responses = {
+        SPINStage.OPENING: [
+            f"はい、{industry}業界は確かに人手不足が深刻ですね。当社も例外ではありません。",
+            "お時間をいただきありがとうございます。御社のことは以前から気になっていました。",
+            "なるほど、具体的にどのようなことでお役に立てるのでしょうか？",
+        ],
+        SPINStage.SITUATION: [
+            f"現状ですと、請求書処理に3名で月末は毎回残業していますね。かなりの工数がかかっています。",
+            "人数は5名体制ですが、繁忙期は外注も使っています。コストが膨らんでいるのが実情です。",
+            "具体的には、入力作業に1人あたり1日2時間ほど費やしていますね。",
+        ],
+        SPINStage.PROBLEM: [
+            "おっしゃる通り、ミスは正直あります。先月も請求書の金額間違いがあって大変でした。",
+            "課題ですか...確認作業の漏れは時々発生しますね。取引先からクレームが来ることも。",
+            "実は先週も入力ミスで再発行になりました。担当者も疲弊しています。",
+        ],
+        SPINStage.IMPLICATION: [
+            "そうですね、取引先の信用問題にも関わりますよね...経営層も気にしています。",
+            "確かに、このままだと担当者の離職リスクもあります。深刻な問題ですね。",
+            "コストの問題もありますが、それ以上に品質低下が心配です。",
+        ],
+        SPINStage.NEED_PAYOFF: [
+            "それは魅力的ですね。承認フローが自動化されれば、かなり楽になりそうです。",
+            "AIエージェントですか。具体的にどのくらいの効果が見込めるのでしょう？",
+            "興味深いですね。他社での導入実績はありますか？",
+        ],
+        SPINStage.CLOSING: [
+            "スモールスタートというのは良いですね。まずは一部の業務で試してみたいです。",
+            "トライアルから始められるなら、上に相談しやすいですね。具体的な進め方を教えてください。",
+            "予算的にも検討できる範囲です。次のステップについて詳しく聞かせてください。",
+        ],
+    }
+
+    responses = stage_responses.get(stage, ["なるほど、続けてください。"])
+    return random.choice(responses)
+
+
 # --- 2. Logic Engines (Resilient) ---
 
 @resilient_op
@@ -501,8 +565,9 @@ if st.session_state.simulation_active:
                                 "feedback": fb
                             })
 
-                            # Customer response
-                            cust_resp = "ふむ...（顧客は考え込んでいる）"
+                            # Customer response (dynamic based on stage and feedback)
+                            persona = safe_get_persona()
+                            cust_resp = get_customer_response(next_stage, fb, persona)
                             st.session_state.messages.append({
                                 "role": "assistant",
                                 "content": cust_resp,

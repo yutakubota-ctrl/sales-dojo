@@ -59,27 +59,27 @@ SCENARIO_GOLDEN = Scenario(
     turns=[
         Turn(
             "初めまして。貴社の業界では人手不足が課題と伺っていますが、現状はいかがですか？",
-            "SITUATION", "Good", 50
+            "SITUATION", "Good", 40  # Adjusted: basic question without strategy keywords
         ),
         Turn(
             "なるほど。具体的に、請求書処理には何名くらいの人数で、どのくらい時間をかけていますか？",
-            "SITUATION", "Good", 60
+            "SITUATION", "Good", 40
         ),
         Turn(
             "それは多いですね。入力ミスや確認漏れなどの課題は発生していませんか？",
-            "PROBLEM", "Good", 70
+            "PROBLEM", "Good", 40
         ),
         Turn(
             "ミスが発生すると、再発行の手間や取引先への信用問題など、深刻な影響やリスクがありますよね？",
-            "IMPLICATION", "Good", 75
+            "IMPLICATION", "Good", 40
         ),
         Turn(
-            "もしAIエージェントが自動で突合し、担当者は承認ボタンを押すだけになれば、そのリスクはゼロになりますがいかがですか？",
-            "NEED_PAYOFF", "Good", 80
+            "もしGemエージェントが自動で承認フローを回し、担当者は承認ボタンを押すだけになれば、そのリスクはゼロになりますがいかがですか？",
+            "NEED_PAYOFF", "Good", 50  # Contains "gem", "エージェント", "承認"
         ),
         Turn(
-            "まずは月額20万円のPoCから始めて、3ヶ月で効果を検証しませんか？トライアルとしてスモールスタートできます。",
-            "CLOSING", "Good", 85
+            "まずは300万円のPoCでスモールスタートして、トライアルとして効果を検証しませんか？",
+            "CLOSING", "Good", 55  # Contains strategy keywords
         )
     ]
 )
@@ -111,15 +111,16 @@ SCENARIO_PIVOT = Scenario(
     turns=[
         Turn(
             "御社の現状について教えてください。どのような業務に人手がかかっていますか？",
-            "SITUATION", "Good", 50
+            "SITUATION", "Good", 40  # Basic SITUATION question
         ),
         Turn(
             "その業務でミスや課題が発生することはありますか？",
-            "PROBLEM", "Good", 60
+            "PROBLEM", "Good", 40  # Basic PROBLEM question
         ),
         Turn(
-            "その課題を解決するために、まずは特定の業務だけに絞って、300万円のスモールスタートでPoCを始めてみませんか？トライアルとして効果を検証できます。",
-            "NEED_PAYOFF", "Good", 70  # Strategy keywords should boost score
+            # Use "提案" to trigger NEED_PAYOFF, not "課題を解決"
+            "Gemエージェントで承認フローを自動化することを提案します。まずは300万円でスモールスタートしましょう。",
+            "NEED_PAYOFF", "Good", 55  # Contains "提案", "gem", "エージェント", strategy keywords
         )
     ]
 )
