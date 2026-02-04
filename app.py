@@ -229,6 +229,9 @@ if "demo_mode" not in st.session_state:
     st.session_state.demo_mode = False
 if "current_stage" not in st.session_state:
     st.session_state.current_stage = SPINStage.OPENING
+# Validate current_stage is a valid SPINStage enum (fix for corrupted sessions)
+if not isinstance(st.session_state.current_stage, SPINStage):
+    st.session_state.current_stage = SPINStage.OPENING
 
 # --- LLM Client Setup ---
 def get_anthropic_client() -> Optional[anthropic.Anthropic]:
@@ -790,9 +793,14 @@ with st.sidebar:
         # SPIN Stage Progress
         st.markdown("---")
         st.markdown("**🎯 SPIN進行状況**")
-        spin_idx = SPIN_ORDER.index(st.session_state.current_stage)
-        st.progress((spin_idx + 1) / len(SPIN_ORDER))
-        st.caption(f"現在: {st.session_state.current_stage.value}")
+        try:
+            spin_idx = SPIN_ORDER.index(st.session_state.current_stage)
+            st.progress((spin_idx + 1) / len(SPIN_ORDER))
+            st.caption(f"現在: {st.session_state.current_stage.value}")
+        except (ValueError, AttributeError):
+            st.session_state.current_stage = SPINStage.OPENING
+            st.progress(1 / len(SPIN_ORDER))
+            st.caption(f"現在: {SPINStage.OPENING.value}")
 
         # Demo Mode Toggle
         st.markdown("---")
