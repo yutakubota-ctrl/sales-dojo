@@ -197,13 +197,20 @@ def evaluate_turn_logic(user_input: str, current_stage_enum: SPINStage):
     input_text = user_input.lower()
 
     # Keyword-based stage detection (ordered by priority - later stages checked first)
+    # Includes both kanji and hiragana variants for robust matching
     stage_keywords = {
-        SPINStage.CLOSING: ["契約", "金額", "poc", "始め", "開始", "トライアル", "スモールスタート", "決裁", "進め"],
-        SPINStage.NEED_PAYOFF: ["解決", "価値", "できたら", "役立", "提案", "gem", "エージェント", "ai", "自動化", "効率"],
-        SPINStage.IMPLICATION: ["影響", "リスク", "コスト", "もし", "深刻", "損失", "遅れ", "危険"],
-        SPINStage.PROBLEM: ["課題", "困っ", "ミス", "手間", "問題", "悩み", "大変", "疲弊"],
-        SPINStage.SITUATION: ["現状", "フロー", "人数", "どのよう", "状況", "担当", "業務"],
-        SPINStage.OPENING: ["はじめ", "挨拶", "時間", "伺い", "よろしく", "ありがとう", "用件"]
+        SPINStage.CLOSING: ["契約", "金額", "poc", "始め", "開始", "トライアル", "スモールスタート",
+                           "決裁", "進め", "導入", "300万", "500万", "1000万", "今月", "サポート"],
+        SPINStage.NEED_PAYOFF: ["解決", "価値", "できたら", "役立", "提案", "gem", "エージェント", "ai",
+                               "自動化", "効率", "当社", "空いた", "集中", "確認作業", "ゼロ", "いかが"],
+        SPINStage.IMPLICATION: ["影響", "リスク", "コスト", "もし", "深刻", "損失", "遅れ", "危険",
+                               "取引停止", "年間", "数百万", "辞め", "回らな"],
+        SPINStage.PROBLEM: ["課題", "困っ", "ミス", "手間", "問題", "悩み", "大変", "疲弊",
+                           "漏れ", "残業", "属人化"],
+        SPINStage.SITUATION: ["現状", "フロー", "人数", "どのよう", "状況", "担当", "業務",
+                             "ツール", "請求書", "処理", "何名"],
+        SPINStage.OPENING: ["はじめ", "初め", "挨拶", "時間", "伺い", "よろしく", "ありがとう",
+                           "用件", "動向", "効率化", "参り", "お世話"]
     }
 
     # Detect stage from keywords - check from CLOSING to OPENING (prioritize later stages)
@@ -239,26 +246,28 @@ def evaluate_turn_logic(user_input: str, current_stage_enum: SPINStage):
             }
             next_stage = current_stage_enum
     elif det_idx < curr_idx:
-        # Loop back - but still allow progression if input is substantial
-        if len(input_text) > 50:
-            # Long input may contain multiple stage keywords, allow progression
+        # Loop back - but always allow progression for substantial input
+        # In a real sales conversation, reviewing earlier points while advancing is common
+        if len(input_text) > 15:
+            # Progress anyway - salespeople often reference earlier points while moving forward
             next_stage = stage_list[min(curr_idx + 1, len(stage_list) - 1)]
             feedback = {
                 "status": "✅ Good Progression",
-                "comment": "詳細な説明で次へ進みました。",
+                "comment": f"確認しながら{next_stage.value}へ進みました。",
                 "score": 85
             }
         else:
             feedback = {
                 "status": "🔄 Loop Back",
                 "comment": "確認ありがとうございます。話を進展させましょう。",
-                "score": 60
+                "score": 70
             }
-            next_stage = current_stage_enum
-    elif det_idx == curr_idx:
-        # Same stage - digging deeper, always allow progression with substantial input
-        if len(input_text) > 20:
+            # Still allow some progression for short inputs
             next_stage = stage_list[min(curr_idx + 1, len(stage_list) - 1)]
+    elif det_idx == curr_idx:
+        # Same stage - digging deeper, always allow progression
+        next_stage = stage_list[min(curr_idx + 1, len(stage_list) - 1)]
+        if len(input_text) > 15:
             feedback = {
                 "status": "✅ Good Progression",
                 "comment": f"良い深掘りです。{next_stage.value}へ進みます。",
@@ -267,10 +276,10 @@ def evaluate_turn_logic(user_input: str, current_stage_enum: SPINStage):
         else:
             feedback = {
                 "status": "➡️ Deepening",
-                "comment": "良い深掘りです。もう少しで次のステージへ進めます。",
-                "score": 75
+                "comment": f"次の{next_stage.value}へ進みます。",
+                "score": 80
             }
-            next_stage = current_stage_enum
+            next_stage = stage_list[min(curr_idx + 1, len(stage_list) - 1)]
     else:
         # Proper advancement
         feedback = {
