@@ -1,12 +1,13 @@
 """
-GWS Agent Architecture Sales Dojo v3.0
+GWS Agent Architecture Sales Dojo v3.1
 ======================================
 Powered by Business Ecosystem Grand Architect
 
 Features:
-- Auto-Pilot Demo Mode with 30-second interval
+- Auto-Pilot Demo Mode with 10-second interval
 - Persona Editor for custom scenarios
 - SPIN Selling Framework analysis
+- Manager Evaluation Panel
 """
 
 import streamlit as st
@@ -15,7 +16,7 @@ import time
 from enum import Enum
 
 # --- 0. Constants & Config ---
-st.set_page_config(layout="wide", page_title="GWS Sales Dojo v3.0 (Auto-Pilot & Editor)")
+st.set_page_config(layout="wide", page_title="GWS Sales Dojo v3.1 (Auto-Pilot & Editor)")
 
 # SPIN Stages Definition
 class SPINStage(Enum):
@@ -42,7 +43,7 @@ if "auto_run" not in st.session_state:
 if "current_stage" not in st.session_state:
     st.session_state.current_stage = SPINStage.OPENING
 if "auto_run_first" not in st.session_state:
-    st.session_state.auto_run_first = True  # Flag for immediate first execution
+    st.session_state.auto_run_first = True
 
 # Validate current_stage is a valid SPINStage enum (fix for corrupted sessions)
 if not isinstance(st.session_state.current_stage, SPINStage):
@@ -51,10 +52,7 @@ if not isinstance(st.session_state.current_stage, SPINStage):
 # --- 2. Logic Engines (Simulated LLMs) ---
 
 def get_demo_sales_response(history, stage, persona):
-    """
-    [The Top Performer Agent]
-    本来はLLMが「文脈に沿った最強の営業トーク」を生成する場所。
-    """
+    """[The Top Performer Agent]"""
     responses = {
         SPINStage.OPENING: f"本日はお時間をいただきありがとうございます。{persona['industry']}業界では最近、人手不足が深刻だと伺いますが、御社の状況はいかがでしょうか？",
         SPINStage.SITUATION: "なるほど。具体的には、請求書の処理業務には現在どのくらいの人数と時間を割かれているのですか？",
@@ -66,18 +64,13 @@ def get_demo_sales_response(history, stage, persona):
     return responses.get(stage, "ご提案があります...")
 
 def evaluate_turn_logic(user_input, current_stage_enum):
-    """
-    [The Manager Agent]
-    SPIN分析と段階飛ばしのチェックを行う。
-    """
-    # Validate input stage
+    """[The Manager Agent] SPIN分析と段階飛ばしのチェック + 詳細スコア"""
     if not isinstance(current_stage_enum, SPINStage):
         current_stage_enum = SPINStage.OPENING
 
     feedback = {}
-    detected_stage = SPINStage.SITUATION  # Default placeholder
+    detected_stage = SPINStage.SITUATION
 
-    # 簡易キーワード分析 (本番はLLMで判定)
     input_text = user_input.lower()
 
     if "はじめまして" in input_text or "ありがとう" in input_text:
@@ -93,80 +86,97 @@ def evaluate_turn_logic(user_input, current_stage_enum):
     elif "契約" in input_text or "金額" in input_text or "トライアル" in input_text:
         detected_stage = SPINStage.CLOSING
 
-    # Logic: Stage Skipping Check
     stage_order = [s for s in SPINStage]
     current_index = stage_order.index(current_stage_enum)
     detected_index = stage_order.index(detected_stage)
 
-    # 評価コメント生成
+    # 詳細スコア計算
+    breakdown = {"spin_flow": 0, "keywords": 0, "strategy": 0, "engagement": 0}
+
+    # SPIN Flow Score (40点満点)
     if detected_index > current_index + 1:
         feedback["status"] = "⚠️ Alert: Skipping Stages"
-        feedback["comment"] = f"段階を飛ばしすぎています！ 現在はまだ「{current_stage_enum.value.split(' ')[0]}」フェーズです。相手の課題（Problem/Implication）を深掘りする前に解決策（Need-payoff）を提示しても、押し売りに聞こえます。"
-        feedback["score"] = 40
-        next_stage = current_stage_enum  # 進ませない
+        feedback["comment"] = f"段階を飛ばしすぎています！現在は「{current_stage_enum.value.split(' ')[0]}」フェーズです。"
+        breakdown["spin_flow"] = 10
+        next_stage = current_stage_enum
     elif detected_index < current_index:
         feedback["status"] = "🔄 Loop Back"
-        feedback["comment"] = f"前のフェーズの話に戻りましたね。確認としてはOKですが、話が進展していません。"
-        feedback["score"] = 60
+        feedback["comment"] = "前のフェーズに戻りました。確認は良いですが、進展させましょう。"
+        breakdown["spin_flow"] = 25
         next_stage = current_stage_enum
     else:
         feedback["status"] = "✅ Good Progression"
         feedback["comment"] = f"順調です。{detected_stage.value} の意図が伝わりました。"
-        feedback["score"] = 90
-        next_stage = detected_stage  # ステージ進行
+        breakdown["spin_flow"] = 40
+        next_stage = detected_stage
+
+    # Keywords Score (30点満点)
+    good_keywords = ["Gem", "エージェント", "承認", "人間", "循環", "連携", "リルート"]
+    keyword_hits = sum(1 for kw in good_keywords if kw in user_input)
+    breakdown["keywords"] = min(keyword_hits * 10, 30)
+
+    # Strategy Score (20点満点)
+    strategy_keywords = ["スモールスタート", "トライアル", "PoC", "まずは", "300万", "500万"]
+    strategy_hits = sum(1 for kw in strategy_keywords if kw in user_input)
+    breakdown["strategy"] = min(strategy_hits * 10, 20)
+
+    # Engagement Score (10点満点)
+    if len(user_input) > 50:
+        breakdown["engagement"] = 10
+    elif len(user_input) > 20:
+        breakdown["engagement"] = 5
+
+    feedback["score"] = sum(breakdown.values())
+    feedback["breakdown"] = breakdown
+    feedback["improvement"] = get_improvement_advice(breakdown)
 
     return feedback, next_stage
 
+def get_improvement_advice(breakdown):
+    """スコアに基づいた改善アドバイスを生成"""
+    advice = []
+    if breakdown["spin_flow"] < 30:
+        advice.append("SPINの順序を守り、段階を飛ばさないようにしましょう。")
+    if breakdown["keywords"] < 15:
+        advice.append("Gem、承認フロー、連携などの技術キーワードを使いましょう。")
+    if breakdown["strategy"] < 10:
+        advice.append("スモールスタートやトライアル提案で着地点を示しましょう。")
+    if breakdown["engagement"] < 5:
+        advice.append("もう少し詳しく説明を加えましょう。")
+    return " ".join(advice) if advice else "素晴らしい提案です！この調子で続けましょう。"
+
 def run_demo_turn():
-    """デモモードの1ターンを実行する処理"""
-    # Validate current_stage
+    """デモモードの1ターンを実行"""
     if not isinstance(st.session_state.current_stage, SPINStage):
         st.session_state.current_stage = SPINStage.OPENING
 
-    # Validate customer_persona has required keys
     persona = st.session_state.customer_persona
     if not persona or "industry" not in persona:
-        persona = {
-            "industry": "製造",
-            "position": "部長",
-            "personality": "論理的",
-            "budget": "500万円"
-        }
+        persona = {"industry": "製造", "position": "部長", "personality": "論理的", "budget": "500万円"}
         st.session_state.customer_persona = persona
 
     current_stage = st.session_state.current_stage
+    demo_input = get_demo_sales_response(st.session_state.messages, current_stage, persona)
 
-    demo_input = get_demo_sales_response(
-        st.session_state.messages,
-        current_stage,
-        persona
-    )
-
-    # Demo mode: Force advance to next stage (ideal progression)
     stage_order = list(SPINStage)
     current_idx = stage_order.index(current_stage)
-
-    # Move to next stage (cap at CLOSING)
-    if current_idx < len(stage_order) - 1:
-        next_stage = stage_order[current_idx + 1]
-    else:
-        next_stage = SPINStage.CLOSING
+    next_stage = stage_order[current_idx + 1] if current_idx < len(stage_order) - 1 else SPINStage.CLOSING
 
     st.session_state.current_stage = next_stage
-
     st.session_state.messages.append({"role": "user", "content": demo_input, "type": "demo"})
     st.session_state.review_log.append({
         "turn": len(st.session_state.messages) // 2,
         "is_human": False,
-        "stage": current_stage.value,  # Log the stage this response was FOR
+        "stage": current_stage.value,
         "feedback": {
             "status": "✅ Demo: Ideal Progression",
             "comment": f"トップパフォーマーの{current_stage.value.split(' ')[0]}フェーズ対応",
-            "score": 95
+            "score": 95,
+            "breakdown": {"spin_flow": 40, "keywords": 25, "strategy": 20, "engagement": 10},
+            "improvement": "模範的なSPIN営業です。"
         }
     })
 
-    # Customer Response (Simulated) - varies by stage
     time.sleep(0.5)
     customer_responses = {
         SPINStage.OPENING: f"はい、{persona['industry']}の現場は確かに人手不足です。何かお考えがあるのですか？",
@@ -187,9 +197,9 @@ def init_scenario():
     st.session_state.review_log = []
     st.session_state.simulation_active = True
     st.session_state.current_stage = SPINStage.OPENING
-    st.session_state.auto_run = False  # Reset auto run on new scenario
+    st.session_state.auto_run = False
+    st.session_state.auto_run_first = True
 
-    # Check if persona is set, if not random
     if not st.session_state.customer_persona:
         st.session_state.customer_persona = {
             "industry": random.choice(["物流", "金融", "製造", "ヘルスケア", "SaaS"]),
@@ -198,43 +208,52 @@ def init_scenario():
             "budget": random.choice(["300万円", "500万円", "1000万円"])
         }
 
-    # Initial Customer Message
     p = st.session_state.customer_persona
     msg = f"（{p['industry']}業界 / {p['position']}）\nはい、どういったご用件でしょうか？ {p['personality']} なので、手短にお願いします。"
     st.session_state.messages.append({"role": "assistant", "content": msg, "type": "ai"})
 
+def get_score_class(score):
+    if score >= 70: return "score-high"
+    elif score >= 40: return "score-mid"
+    return "score-low"
+
+# --- CSS Styling ---
+st.markdown("""
+<style>
+    .score-high { color: #28a745; font-weight: bold; }
+    .score-mid { color: #ffc107; font-weight: bold; }
+    .score-low { color: #dc3545; font-weight: bold; }
+    .review-box { background-color: #e8f5e9; padding: 15px; border-left: 4px solid #4CAF50; border-radius: 5px; margin: 10px 0; }
+    .review-box-warning { background-color: #fff3cd; padding: 15px; border-left: 4px solid #ffc107; border-radius: 5px; margin: 10px 0; }
+    .review-box-danger { background-color: #f8d7da; padding: 15px; border-left: 4px solid #dc3545; border-radius: 5px; margin: 10px 0; }
+</style>
+""", unsafe_allow_html=True)
 
 # Sidebar Controls
 with st.sidebar:
-    st.title("🧩 GWS Sales Dojo v3.0")
+    st.title("🧩 GWS Sales Dojo v3.1")
 
-    # --- Persona Editor ---
     with st.expander("👤 ペルソナ設定・編集", expanded=True):
-        # Default values or current state
         curr_p = st.session_state.customer_persona if st.session_state.customer_persona else {
             "industry": "製造", "position": "部長", "personality": "論理的", "budget": "500万円"
         }
-
-        p_industry = st.text_input("業界 (Industry)", value=curr_p.get("industry", ""))
-        p_position = st.text_input("役職 (Position)", value=curr_p.get("position", ""))
-        p_personality = st.text_input("性格 (Personality)", value=curr_p.get("personality", ""))
-        p_budget = st.text_input("予算 (Budget)", value=curr_p.get("budget", ""))
+        p_industry = st.text_input("業界", value=curr_p.get("industry", ""))
+        p_position = st.text_input("役職", value=curr_p.get("position", ""))
+        p_personality = st.text_input("性格", value=curr_p.get("personality", ""))
+        p_budget = st.text_input("予算", value=curr_p.get("budget", ""))
 
         if st.button("✅ 設定を反映してリセット"):
             st.session_state.customer_persona = {
-                "industry": p_industry,
-                "position": p_position,
-                "personality": p_personality,
-                "budget": p_budget
+                "industry": p_industry, "position": p_position,
+                "personality": p_personality, "budget": p_budget
             }
             init_scenario()
             st.rerun()
 
     st.markdown("---")
 
-    # 1. Start/Reset
     if st.button("🆕 新規シナリオ開始 (ランダム)", type="primary"):
-        st.session_state.customer_persona = {}  # Clear to random
+        st.session_state.customer_persona = {}
         init_scenario()
         st.rerun()
 
@@ -242,23 +261,19 @@ with st.sidebar:
         st.markdown(f"""
         <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px; border-radius: 10px; margin: 10px 0;">
             <strong>🎯 Target:</strong><br>
-            {st.session_state.customer_persona['industry']} / {st.session_state.customer_persona['position']}<br>
-            <small>予算: {st.session_state.customer_persona['budget']}</small>
+            {st.session_state.customer_persona.get('industry', 'N/A')} / {st.session_state.customer_persona.get('position', 'N/A')}<br>
+            <small>予算: {st.session_state.customer_persona.get('budget', 'N/A')}</small>
         </div>
         """, unsafe_allow_html=True)
 
         st.markdown("---")
-        # 2. Demo Mode Toggle
         is_demo = st.toggle("🤖 デモモード (Auto-Pilot)", value=st.session_state.demo_mode)
         st.session_state.demo_mode = is_demo
 
         if is_demo:
             st.info("AIが模範的なセールスを行います。")
-
-            # Auto Run Switch
-            auto_run = st.toggle("⏱️ オート実行 (30秒間隔)", value=st.session_state.auto_run)
+            auto_run = st.toggle("⏱️ オート実行 (10秒間隔)", value=st.session_state.auto_run)
             if auto_run and not st.session_state.auto_run:
-                # Just turned ON - reset first flag for immediate execution
                 st.session_state.auto_run_first = True
             st.session_state.auto_run = auto_run
 
@@ -268,8 +283,6 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown("### 📊 Current Phase")
-
-    # Safe stage index calculation
     stage_names = ["OPENING", "SITUATION", "PROBLEM", "IMPLICATION", "NEED_PAYOFF", "CLOSING"]
     try:
         stage_idx = stage_names.index(st.session_state.current_stage.name)
@@ -281,93 +294,132 @@ with st.sidebar:
         st.caption(f"Stage: {SPINStage.OPENING.value}")
 
 
-# Main Chat Area
-st.title("💬 商談ルーム")
-
+# Main Area with Two Columns
 if st.session_state.simulation_active:
+    col_chat, col_review = st.columns([2, 1])
 
-    # Auto-Run Logic (Place at top of main area to handle updates)
-    if st.session_state.demo_mode and st.session_state.auto_run:
-        # Check if we should stop (e.g. End of game)
-        if st.session_state.current_stage == SPINStage.CLOSING and len(st.session_state.messages) > 10:
-            st.success("🎉 デモが完了しました。")
-            st.session_state.auto_run = False
-            st.session_state.auto_run_first = True  # Reset for next time
-        else:
-            # First execution: Run immediately without waiting
-            if st.session_state.auto_run_first:
-                st.session_state.auto_run_first = False
-                run_demo_turn()
-                st.rerun()
+    with col_chat:
+        st.subheader("💬 商談ルーム")
+
+        # Auto-Run Logic
+        if st.session_state.demo_mode and st.session_state.auto_run:
+            if st.session_state.current_stage == SPINStage.CLOSING and len(st.session_state.messages) > 10:
+                st.success("🎉 デモが完了しました。")
+                st.session_state.auto_run = False
+                st.session_state.auto_run_first = True
             else:
-                # Subsequent executions: 30-second countdown
-                timer_ph = st.empty()
-                for i in range(30, 0, -1):
-                    timer_ph.info(f"⏳ オート実行中... 次の応答まで: {i}秒 (停止するにはサイドバーのスイッチをOFFにしてください)")
-                    time.sleep(1)
+                if st.session_state.auto_run_first:
+                    st.session_state.auto_run_first = False
+                    run_demo_turn()
+                    st.rerun()
+                else:
+                    timer_ph = st.empty()
+                    for i in range(10, 0, -1):
+                        timer_ph.info(f"⏳ オート実行中... 次の応答まで: {i}秒")
+                        time.sleep(1)
+                    timer_ph.empty()
+                    run_demo_turn()
+                    st.rerun()
 
-                timer_ph.empty()
-                run_demo_turn()
+        # Message History
+        for msg in st.session_state.messages:
+            avatar = "🤖" if msg.get("type") == "demo" else ("👤" if msg["role"] == "assistant" else "👔")
+            with st.chat_message(msg["role"], avatar=avatar):
+                prefix = "【DEMO】" if msg.get("type") == "demo" else ""
+                st.markdown(f"{prefix} {msg['content']}")
+
+        # Human Input Area
+        if not st.session_state.demo_mode:
+            if prompt := st.chat_input("あなたのターンです。SPINを意識して入力..."):
+                fb, next_stage = evaluate_turn_logic(prompt, st.session_state.current_stage)
+                st.session_state.current_stage = next_stage
+                st.session_state.messages.append({"role": "user", "content": prompt, "type": "human"})
+                st.session_state.review_log.append({
+                    "turn": len(st.session_state.messages) // 2,
+                    "is_human": True,
+                    "stage": next_stage.value,
+                    "feedback": fb
+                })
+                time.sleep(0.5)
+                cust_resp = "ふむ...（顧客は考え込んでいる）"
+                st.session_state.messages.append({"role": "assistant", "content": cust_resp, "type": "ai"})
                 st.rerun()
 
-    # 1. Message History
-    for msg in st.session_state.messages:
-        avatar = "🤖" if msg.get("type") == "demo" else ("👤" if msg["role"] == "assistant" else "👔")
-        with st.chat_message(msg["role"], avatar=avatar):
-            prefix = "【DEMO】" if msg.get("type") == "demo" else ""
-            st.markdown(f"{prefix} {msg['content']}")
+    # Right Column: Manager Review Panel
+    with col_review:
+        st.subheader("📊 マネージャー評価")
 
-            # Show mini-feedback for Demo/Human actions
-            if msg["role"] == "user":
-                # Find corresponding log
-                log_idx = (st.session_state.messages.index(msg)) // 2
-                if log_idx < len(st.session_state.review_log):
-                    log = st.session_state.review_log[log_idx]
-                    color = "orange" if "Alert" in log["feedback"]["status"] else "green"
-                    st.markdown(f":{color}[_{log['feedback']['status']} (Stage: {log['stage']})_]")
+        if st.session_state.review_log:
+            last_review = st.session_state.review_log[-1]
+            score = last_review['feedback']['score']
+            breakdown = last_review['feedback'].get('breakdown', {})
 
-    # 2. Human Input Area (Only if Demo Mode is OFF)
-    if not st.session_state.demo_mode:
-        if prompt := st.chat_input("あなたのターンです。SPINを意識して入力..."):
-            # Human Logic
-            fb, next_stage = evaluate_turn_logic(prompt, st.session_state.current_stage)
-            st.session_state.current_stage = next_stage
+            # Score Display
+            score_color = "#28a745" if score >= 70 else ("#ffc107" if score >= 40 else "#dc3545")
+            st.markdown(f"""
+            <div style="background: white; padding: 20px; border-radius: 10px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <h1 style="color: {score_color}; margin: 0;">{score}/100</h1>
+                <p style="color: #666;">最新ターンスコア</p>
+            </div>
+            """, unsafe_allow_html=True)
 
-            st.session_state.messages.append({"role": "user", "content": prompt, "type": "human"})
-            st.session_state.review_log.append({
-                "turn": len(st.session_state.messages) // 2,
-                "is_human": True,  # Filter Target
-                "stage": next_stage.value,
-                "feedback": fb
-            })
+            st.markdown("<br>", unsafe_allow_html=True)
 
-            # Customer Response
-            time.sleep(1)
-            cust_resp = "ふむ...（顧客は考え込んでいる）"
-            st.session_state.messages.append({"role": "assistant", "content": cust_resp, "type": "ai"})
-            st.rerun()
+            # Breakdown
+            if breakdown:
+                cols = st.columns(2)
+                cols[0].metric("SPIN Flow", f"{breakdown.get('spin_flow', 0)}/40")
+                cols[1].metric("Keywords", f"{breakdown.get('keywords', 0)}/30")
+                cols = st.columns(2)
+                cols[0].metric("Strategy", f"{breakdown.get('strategy', 0)}/20")
+                cols[1].metric("Engagement", f"{breakdown.get('engagement', 0)}/10")
 
-    # 3. Final Feedback
-    st.markdown("---")
-    if st.button("🏁 セッション終了 & 評価"):
-        human_logs = [l for l in st.session_state.review_log if l["is_human"]]
+            st.markdown("---")
 
-        st.markdown("## 📝 Human Performance Review")
-        if not human_logs:
-            st.warning("人間による操作記録がありません（すべてデモモードでした）。")
+            # Feedback Box
+            status = last_review['feedback']['status']
+            comment = last_review['feedback']['comment']
+            box_class = "review-box" if "Good" in status or "Demo" in status else ("review-box-warning" if "Loop" in status else "review-box-danger")
+            st.markdown(f"""
+            <div class="{box_class}">
+                <strong>{status}</strong><br><br>
+                {comment}
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Improvement Advice
+            improvement = last_review['feedback'].get('improvement', '')
+            if improvement:
+                st.info(f"💡 **改善ポイント:** {improvement}")
+
+            st.markdown("---")
+
+            # History
+            with st.expander("📝 過去の評価履歴"):
+                for log in reversed(st.session_state.review_log[:-1]):
+                    st.markdown(f"**Turn {log['turn']}** ({log['stage']}) - Score: {log['feedback']['score']}")
+                    st.caption(log['feedback']['comment'][:50] + "...")
+                    st.markdown("---")
         else:
-            score_avg = sum([l["feedback"]["score"] for l in human_logs]) / len(human_logs)
-            st.metric("Average Score", f"{int(score_avg)} / 100")
+            st.info("商談を開始してください。発言に対してリアルタイムで評価を行います。")
 
-            for log in human_logs:
-                with st.expander(f"Turn {log['turn']} : {log['stage']}"):
-                    st.info(log['feedback']['comment'])
-                    if log['feedback']['score'] < 60:
-                        st.error("改善点: 段階を急ぎすぎています。SPINの順序を守ってください。")
+        # End Session Button
+        if st.button("🏁 セッション終了 & レポート"):
+            human_logs = [l for l in st.session_state.review_log if l.get("is_human")]
+            st.markdown("## 📝 Session Report")
+            if not human_logs:
+                st.warning("人間による操作記録がありません。")
+            else:
+                avg_score = sum(l["feedback"]["score"] for l in human_logs) / len(human_logs)
+                st.metric("平均スコア", f"{int(avg_score)}/100")
+                for log in human_logs:
+                    with st.expander(f"Turn {log['turn']}: {log['stage']}"):
+                        st.write(log['feedback']['comment'])
 
 else:
+    st.title("💬 商談ルーム")
     st.info("👈 左のサイドバーから '新規シナリオ開始' または 'ペルソナ設定' を行ってください。")
 
 # Footer
 st.markdown("---")
-st.caption("🧩 GWS Agent Architecture Sales Dojo v3.0 | Built with Streamlit")
+st.caption("🧩 GWS Agent Architecture Sales Dojo v3.1 | Built with Streamlit")
