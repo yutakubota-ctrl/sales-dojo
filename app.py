@@ -15,6 +15,19 @@ import os
 from dataclasses import dataclass
 from typing import Optional, Dict, List, Any
 from dotenv import load_dotenv
+from enum import Enum
+
+# --- SPIN Selling Framework ---
+class SPINStage(Enum):
+    OPENING = "Opening (挨拶・ラポール)"
+    SITUATION = "Situation (現状把握)"
+    PROBLEM = "Problem (課題抽出)"
+    IMPLICATION = "Implication (問題の深刻化)"
+    NEED_PAYOFF = "Need-payoff (解決の価値・提案)"
+    CLOSING = "Closing (合意形成)"
+
+SPIN_ORDER = [SPINStage.OPENING, SPINStage.SITUATION, SPINStage.PROBLEM,
+              SPINStage.IMPLICATION, SPINStage.NEED_PAYOFF, SPINStage.CLOSING]
 
 # Load environment variables
 load_dotenv()
@@ -212,6 +225,10 @@ if "trust_level" not in st.session_state:
     st.session_state.trust_level = 0
 if "llm_mode" not in st.session_state:
     st.session_state.llm_mode = "mock"
+if "demo_mode" not in st.session_state:
+    st.session_state.demo_mode = False
+if "current_stage" not in st.session_state:
+    st.session_state.current_stage = SPINStage.OPENING
 
 # --- LLM Client Setup ---
 def get_anthropic_client() -> Optional[anthropic.Anthropic]:
@@ -292,6 +309,67 @@ def generate_initial_greeting() -> str:
 当社では『{persona['pain_point']}』という課題を抱えております。貴社のAIエージェントソリューションで解決できると伺いましたが、具体的にどのような仕組みなのでしょうか？
 
 予算は{persona['budget']}程度を想定しておりますが、この範囲で実現可能でしょうか。"""
+
+# --- SPIN Analysis Engine ---
+def analyze_spin_stage(user_input: str) -> SPINStage:
+    """Analyze user input and detect SPIN stage."""
+    text = user_input.lower()
+
+    # Stage detection keywords
+    if any(x in text for x in ["はじめまして", "ありがとう", "よろしく", "お時間"]):
+        return SPINStage.OPENING
+    elif any(x in text for x in ["現状", "どのような", "人数", "どれくらい", "何人", "いかが"]):
+        return SPINStage.SITUATION
+    elif any(x in text for x in ["困って", "課題", "ミス", "問題", "悩み", "ボトルネック"]):
+        return SPINStage.PROBLEM
+    elif any(x in text for x in ["影響", "コスト", "リスク", "深刻", "もし", "放置"]):
+        return SPINStage.IMPLICATION
+    elif any(x in text for x in ["解決", "AI", "Gem", "提案", "エージェント", "自動化", "効率"]):
+        return SPINStage.NEED_PAYOFF
+    elif any(x in text for x in ["契約", "金額", "トライアル", "PoC", "進め", "導入"]):
+        return SPINStage.CLOSING
+
+    return SPINStage.SITUATION  # Default
+
+def check_spin_progression(current_stage: SPINStage, detected_stage: SPINStage) -> Dict:
+    """Check if SPIN progression is valid (no stage skipping)."""
+    current_idx = SPIN_ORDER.index(current_stage)
+    detected_idx = SPIN_ORDER.index(detected_stage)
+
+    if detected_idx > current_idx + 1:
+        return {
+            "status": "⚠️ 段階飛ばし検知",
+            "valid": False,
+            "message": f"現在は「{current_stage.value.split(' ')[0]}」フェーズです。課題（Problem/Implication）を深掘りする前に解決策を提示すると、押し売りに聞こえます。",
+            "penalty": 20
+        }
+    elif detected_idx < current_idx - 1:
+        return {
+            "status": "🔄 後戻り",
+            "valid": True,
+            "message": "前のフェーズに戻りました。確認は良いですが、話を進展させましょう。",
+            "penalty": 5
+        }
+    else:
+        return {
+            "status": "✅ 順調",
+            "valid": True,
+            "message": f"「{detected_stage.value.split(' ')[0]}」フェーズに適した発言です。",
+            "penalty": 0
+        }
+
+def get_demo_response(stage: SPINStage, persona: Dict) -> str:
+    """Generate demo (Top Performer) response based on current SPIN stage."""
+    industry = persona.get('industry', '製造業')
+    responses = {
+        SPINStage.OPENING: f"本日はお時間をいただきありがとうございます。{industry}業界では最近、人手不足が深刻だと伺いますが、御社の状況はいかがでしょうか？",
+        SPINStage.SITUATION: "なるほど。具体的には、その業務には現在どのくらいの人数と時間を割かれているのですか？月末の繁忙期などではどうなりますか？",
+        SPINStage.PROBLEM: "それは大きな負担ですね。特に月末の締め処理などで、ミスが発生したり、残業が増えたりする課題はございませんか？",
+        SPINStage.IMPLICATION: "もしそのミスが見過ごされた場合、取引先との信頼関係や、修正にかかるコストはどれくらいの影響になるとお考えでしょうか？",
+        SPINStage.NEED_PAYOFF: "ありがとうございます。もし、その『確認作業』自体を専門のGem（AIエージェント）が代行し、担当者様は『最終承認ボタンを押すだけ』になれば、本来注力すべき業務に時間を割けると思いませんか？まず『解析Gem』が内容を構造化し、次に『判定Gem』がチェック、最後に人間が承認という循環構造を組みます。",
+        SPINStage.CLOSING: f"まずはその業務の部分だけ、200万円のトライアルとして導入し、3ヶ月で効果を検証してみませんか？月50時間の削減が実証できれば、来期に拡張を検討いただけます。"
+    }
+    return responses.get(stage, "ご提案があります...")
 
 def generate_manager_feedback(user_input: str, customer_context: Dict) -> Dict:
     """Generate Manager Agent's feedback on the sales rep's input."""
@@ -709,6 +787,48 @@ with st.sidebar:
         st.metric("💝 信頼度", f"{st.session_state.trust_level}%")
         st.progress(st.session_state.trust_level / 100)
 
+        # SPIN Stage Progress
+        st.markdown("---")
+        st.markdown("**🎯 SPIN進行状況**")
+        spin_idx = SPIN_ORDER.index(st.session_state.current_stage)
+        st.progress((spin_idx + 1) / len(SPIN_ORDER))
+        st.caption(f"現在: {st.session_state.current_stage.value}")
+
+        # Demo Mode Toggle
+        st.markdown("---")
+        demo_on = st.toggle("🤖 デモモード (Auto-Pilot)", value=st.session_state.demo_mode)
+        st.session_state.demo_mode = demo_on
+
+        if demo_on:
+            st.info("AIが模範的なセールスを実行します")
+            if st.button("⏩ AIに発言させる"):
+                demo_input = get_demo_response(st.session_state.current_stage, st.session_state.customer_persona)
+
+                # Add demo message
+                st.session_state.messages.append({"role": "user", "content": demo_input, "type": "demo"})
+
+                # Generate feedback
+                feedback = generate_manager_feedback(demo_input, st.session_state.customer_persona)
+                detected_stage = analyze_spin_stage(demo_input)
+                spin_result = check_spin_progression(st.session_state.current_stage, detected_stage)
+
+                if spin_result["valid"]:
+                    st.session_state.current_stage = detected_stage
+
+                st.session_state.review_log.append({
+                    "turn": len(st.session_state.messages) // 2,
+                    "user_input": demo_input,
+                    "feedback": feedback,
+                    "is_human": False,
+                    "spin_stage": detected_stage.value,
+                    "spin_result": spin_result
+                })
+
+                # Customer response
+                response = generate_customer_response(demo_input, st.session_state.customer_persona)
+                st.session_state.messages.append({"role": "assistant", "content": response, "type": "ai"})
+                st.rerun()
+
     st.markdown("---")
     st.markdown("""
     **📋 技術点 (100点満点):**
@@ -801,17 +921,34 @@ else:
 
             # 2. Generate Manager Feedback (Parallel Process)
             feedback = generate_manager_feedback(final_prompt, st.session_state.customer_persona)
+
+            # SPIN Analysis
+            detected_stage = analyze_spin_stage(final_prompt)
+            spin_result = check_spin_progression(st.session_state.current_stage, detected_stage)
+
+            # Apply SPIN penalty to score
+            if spin_result["penalty"] > 0:
+                feedback["score"] = max(0, feedback["score"] - spin_result["penalty"])
+                feedback["feedback"].insert(0, f"🎯 SPIN: {spin_result['status']} - {spin_result['message']}")
+
+            # Update current stage if valid progression
+            if spin_result["valid"] and SPIN_ORDER.index(detected_stage) >= SPIN_ORDER.index(st.session_state.current_stage):
+                st.session_state.current_stage = detected_stage
+
             st.session_state.review_log.append({
                 "turn": len(st.session_state.messages) // 2,
                 "user_input": final_prompt,
-                "feedback": feedback
+                "feedback": feedback,
+                "is_human": True,
+                "spin_stage": detected_stage.value,
+                "spin_result": spin_result
             })
 
             # 3. Generate Customer Response
             with st.spinner(f"{st.session_state.customer_persona['position']} が検討中..."):
                 time.sleep(0.5 if st.session_state.llm_mode == "api" else 1)
                 response = generate_customer_response(final_prompt, st.session_state.customer_persona)
-                st.session_state.messages.append({"role": "assistant", "content": response})
+                st.session_state.messages.append({"role": "assistant", "content": response, "type": "ai"})
 
             st.rerun()
 
