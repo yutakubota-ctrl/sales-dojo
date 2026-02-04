@@ -175,7 +175,7 @@ def get_demo_sales_response(stage: SPINStage, persona: dict) -> str:
     Model answers that progress through SPIN stages
     """
     responses = {
-        SPINStage.OPENING: f"本日はお時間をいただきありがとうございます。御社の{persona.get('industry', '業界')}では最近、DX化が課題と伺いますが、状況はいかがですか？",
+        SPINStage.OPENING: f"本日はお時間をいただきありがとうございます。御社の{persona.get('industry', '業界')}について伺いたいのですが、よろしいでしょうか？",
         SPINStage.SITUATION: "差し支えなければ、現在の請求書処理業務の具体的なフローと、関わっている人数を教えていただけますか？",
         SPINStage.PROBLEM: "ありがとうございます。その手作業のフローにおいて、入力ミスやチェック漏れといった課題は発生していませんか？",
         SPINStage.IMPLICATION: "もしそのミスが発見遅れに繋がった場合、修正にかかる工数や、最悪の場合の取引停止リスクについてはどうお考えですか？",
@@ -201,8 +201,8 @@ def evaluate_turn_logic(user_input: str, current_stage_enum: SPINStage):
     stage_keywords = {
         SPINStage.CLOSING: ["契約", "金額", "poc", "始め", "開始", "トライアル", "スモールスタート",
                            "決裁", "進め", "導入", "300万", "500万", "1000万", "今月", "サポート"],
-        SPINStage.NEED_PAYOFF: ["解決", "価値", "できたら", "役立", "提案", "gem", "エージェント", "ai",
-                               "自動化", "効率", "当社", "空いた", "集中", "確認作業", "ゼロ", "いかが"],
+        SPINStage.NEED_PAYOFF: ["解決", "価値", "できたら", "役立", "gem", "エージェント",
+                               "自動化", "当社の", "空いた", "集中", "確認作業", "ゼロ", "代行"],
         SPINStage.IMPLICATION: ["影響", "リスク", "コスト", "もし", "深刻", "損失", "遅れ", "危険",
                                "取引停止", "年間", "数百万", "辞め", "回らな"],
         SPINStage.PROBLEM: ["課題", "困っ", "ミス", "手間", "問題", "悩み", "大変", "疲弊",
