@@ -41,6 +41,12 @@ if "auto_run" not in st.session_state:
     st.session_state.auto_run = False
 if "current_stage" not in st.session_state:
     st.session_state.current_stage = SPINStage.OPENING
+if "auto_run_first" not in st.session_state:
+    st.session_state.auto_run_first = True  # Flag for immediate first execution
+
+# Validate current_stage is a valid SPINStage enum (fix for corrupted sessions)
+if not isinstance(st.session_state.current_stage, SPINStage):
+    st.session_state.current_stage = SPINStage.OPENING
 
 # --- 2. Logic Engines (Simulated LLMs) ---
 
@@ -64,6 +70,10 @@ def evaluate_turn_logic(user_input, current_stage_enum):
     [The Manager Agent]
     SPIN分析と段階飛ばしのチェックを行う。
     """
+    # Validate input stage
+    if not isinstance(current_stage_enum, SPINStage):
+        current_stage_enum = SPINStage.OPENING
+
     feedback = {}
     detected_stage = SPINStage.SITUATION  # Default placeholder
 
@@ -109,6 +119,10 @@ def evaluate_turn_logic(user_input, current_stage_enum):
 
 def run_demo_turn():
     """デモモードの1ターンを実行する処理"""
+    # Validate current_stage
+    if not isinstance(st.session_state.current_stage, SPINStage):
+        st.session_state.current_stage = SPINStage.OPENING
+
     current_stage = st.session_state.current_stage
 
     demo_input = get_demo_sales_response(
@@ -232,6 +246,9 @@ with st.sidebar:
 
             # Auto Run Switch
             auto_run = st.toggle("⏱️ オート実行 (30秒間隔)", value=st.session_state.auto_run)
+            if auto_run and not st.session_state.auto_run:
+                # Just turned ON - reset first flag for immediate execution
+                st.session_state.auto_run_first = True
             st.session_state.auto_run = auto_run
 
             if st.button("⏩ 手動で1ターン進める"):
@@ -264,17 +281,23 @@ if st.session_state.simulation_active:
         if st.session_state.current_stage == SPINStage.CLOSING and len(st.session_state.messages) > 10:
             st.success("🎉 デモが完了しました。")
             st.session_state.auto_run = False
+            st.session_state.auto_run_first = True  # Reset for next time
         else:
-            # Placeholder for countdown
-            timer_ph = st.empty()
-            # 30 seconds countdown
-            for i in range(30, 0, -1):
-                timer_ph.info(f"⏳ オート実行中... 次の応答まで: {i}秒 (停止するにはサイドバーのスイッチをOFFにしてください)")
-                time.sleep(1)
+            # First execution: Run immediately without waiting
+            if st.session_state.auto_run_first:
+                st.session_state.auto_run_first = False
+                run_demo_turn()
+                st.rerun()
+            else:
+                # Subsequent executions: 30-second countdown
+                timer_ph = st.empty()
+                for i in range(30, 0, -1):
+                    timer_ph.info(f"⏳ オート実行中... 次の応答まで: {i}秒 (停止するにはサイドバーのスイッチをOFFにしてください)")
+                    time.sleep(1)
 
-            timer_ph.empty()
-            run_demo_turn()
-            st.rerun()
+                timer_ph.empty()
+                run_demo_turn()
+                st.rerun()
 
     # 1. Message History
     for msg in st.session_state.messages:
